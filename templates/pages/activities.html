@@ -1,0 +1,168 @@
+{{define "content"}}
+<div class="flex justify-between items-center mb-6">
+    <h1 class="text-3xl font-bold text-gray-900">Activities</h1>
+    <div class="flex items-center space-x-4">
+        <label class="flex items-center space-x-2">
+            <input type="checkbox" id="unit-toggle" class="form-checkbox" {{if .ImperialUnits}}checked{{end}}>
+            <span class="text-sm text-gray-600">Imperial Units</span>
+        </label>
+        <a href="/bulk-upload" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition duration-200">
+            Bulk Upload
+        </a>
+    </div>
+</div>
+
+<div class="bg-white rounded-lg shadow-md p-6">
+    <div class="flex flex-col sm:flex-row gap-4 mb-6">
+        <input type="text" id="search-input" placeholder="Search activities..." 
+               class="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+        <select id="type-filter" class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+            <option value="">All Types</option>
+            <option value="running">Running</option>
+            <option value="cycling">Cycling</option>
+            <option value="walking">Walking</option>
+            <option value="hiking">Hiking</option>
+        </select>
+    </div>
+
+    <div class="overflow-x-auto">
+        <table class="w-full" id="activities-table">
+            <thead>
+                <tr class="border-b border-gray-200">
+                    <th class="text-left py-3 px-4 font-semibold text-gray-700 cursor-pointer sortable" data-sort="name">
+                        Name <span class="sort-icon">↕</span>
+                    </th>
+                    <th class="text-left py-3 px-4 font-semibold text-gray-700 cursor-pointer sortable" data-sort="type">
+                        Type <span class="sort-icon">↕</span>
+                    </th>
+                    <th class="text-left py-3 px-4 font-semibold text-gray-700 cursor-pointer sortable" data-sort="distance">
+                        Distance <span class="sort-icon">↕</span>
+                    </th>
+                    <th class="text-left py-3 px-4 font-semibold text-gray-700 cursor-pointer sortable" data-sort="duration">
+                        Duration <span class="sort-icon">↕</span>
+                    </th>
+                    <th class="text-left py-3 px-4 font-semibold text-gray-700 cursor-pointer sortable" data-sort="date">
+                        Date <span class="sort-icon">↕</span>
+                    </th>
+                    <th class="text-left py-3 px-4 font-semibold text-gray-700">Actions</th>
+                </tr>
+            </thead>
+            <tbody id="activities-body">
+                {{range .Activities}}
+                <tr class="border-b border-gray-100 hover:bg-gray-50 activity-row" 
+                    data-name="{{.Name}}" data-type="{{.Type}}" data-distance="{{.Distance}}" 
+                    data-duration="{{.Duration}}" data-date="{{.StartTime.Format "2006-01-02"}}">
+                    <td class="py-3 px-4">
+                        <div class="font-medium text-gray-900">{{.Name}}</div>
+                    </td>
+                    <td class="py-3 px-4">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                            {{.Type}}
+                        </span>
+                    </td>
+                    <td class="py-3 px-4 distance-cell" data-meters="{{.Distance}}">
+                        {{printf "%.2f km" (divf .Distance 1000)}}
+                    </td>
+                    <td class="py-3 px-4">
+                        {{.Duration | formatDuration}}
+                    </td>
+                    <td class="py-3 px-4">
+                        {{.StartTime.Format "Jan 2, 2006"}}
+                    </td>
+                    <td class="py-3 px-4">
+                        <a href="/activity/{{.ID}}" class="text-blue-600 hover:text-blue-800 font-medium">
+                            View Details
+                        </a>
+                    </td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+    </div>
+</div>
+{{end}}
+
+{{define "scripts"}}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const unitToggle = document.getElementById('unit-toggle');
+    const searchInput = document.getElementById('search-input');
+    const typeFilter = document.getElementById('type-filter');
+    const activitiesTable = document.getElementById('activities-table');
+    const activitiesBody = document.getElementById('activities-body');
+    
+    // Unit conversion
+    function updateUnits() {
+        const imperial = unitToggle.checked;
+        document.cookie = `units=${imperial ? 'imperial' : 'metric'}; path=/; max-age=31536000`;
+        
+        document.querySelectorAll('.distance-cell').forEach(cell => {
+            const meters = parseFloat(cell.dataset.meters);
+            if (imperial) {
+                const miles = meters * 0.000621371;
+                cell.textContent = `${miles.toFixed(2)} mi`;
+            } else {
+                const km = meters / 1000;
+                cell.textContent = `${km.toFixed(2)} km`;
+            }
+        });
+    }
+    
+    // Search and filter
+    function filterActivities() {
+        const searchTerm = searchInput.value.toLowerCase();
+        const typeFilter = document.getElementById('type-filter').value;
+        
+        document.querySelectorAll('.activity-row').forEach(row => {
+            const name = row.dataset.name.toLowerCase();
+            const type = row.dataset.type;
+            
+            const matchesSearch = name.includes(searchTerm);
+            const matchesType = !typeFilter || type === typeFilter;
+            
+            row.style.display = matchesSearch && matchesType ? '' : 'none';
+        });
+    }
+    
+    // Sort functionality
+    let sortOrder = {};
+    document.querySelectorAll('.sortable').forEach(header => {
+        header.addEventListener('click', function() {
+            const sortBy = this.dataset.sort;
+            const isAsc = sortOrder[sortBy] !== 'asc';
+            sortOrder[sortBy] = isAsc ? 'asc' : 'desc';
+            
+            // Update sort icons
+            document.querySelectorAll('.sort-icon').forEach(icon => icon.textContent = '↕');
+            this.querySelector('.sort-icon').textContent = isAsc ? '↑' : '↓';
+            
+            // Sort rows
+            const rows = Array.from(activitiesBody.querySelectorAll('.activity-row'));
+            rows.sort((a, b) => {
+                let aVal = a.dataset[sortBy];
+                let bVal = b.dataset[sortBy];
+                
+                if (sortBy === 'distance' || sortBy === 'duration') {
+                    aVal = parseFloat(aVal);
+                    bVal = parseFloat(bVal);
+                }
+                
+                if (aVal < bVal) return isAsc ? -1 : 1;
+                if (aVal > bVal) return isAsc ? 1 : -1;
+                return 0;
+            });
+            
+            rows.forEach(row => activitiesBody.appendChild(row));
+        });
+    });
+    
+    // Event listeners
+    unitToggle.addEventListener('change', updateUnits);
+    searchInput.addEventListener('input', filterActivities);
+    typeFilter.addEventListener('change', filterActivities);
+    
+    // Initialize
+    updateUnits();
+});
+</script>
+{{end}}

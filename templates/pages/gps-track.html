@@ -1,0 +1,272 @@
+{{define "head"}}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+{{end}}
+
+{{define "content"}}
+<div class="max-w-6xl mx-auto">
+    <div class="flex justify-between items-start mb-6">
+        <div>
+            <h1 class="text-3xl font-bold text-gray-900 mb-2">GPS Track: {{.Activity.Name}}</h1>
+            <div class="flex items-center space-x-4 text-gray-600">
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">
+                    {{.Activity.Type}}
+                </span>
+                <span>{{.Activity.StartTime.Format "Monday, January 2, 2006"}}</span>
+            </div>
+        </div>
+        <a href="/activity/{{.Activity.ID}}" class="text-blue-600 hover:text-blue-800 font-medium">
+            ← Back to Activity
+        </a>
+    </div>
+
+    <!-- Map -->
+    <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+        <div class="flex justify-between items-center mb-4">
+            <h2 class="text-xl font-bold text-gray-900">Route Map</h2>
+            <div class="flex items-center space-x-4">
+                <label class="flex items-center space-x-2">
+                    <input type="checkbox" id="unit-toggle" class="form-checkbox" {{if .ImperialUnits}}checked{{end}}>
+                    <span class="text-sm text-gray-600">Imperial Units</span>
+                </label>
+                <select id="map-style" class="px-3 py-1 border border-gray-300 rounded text-sm">
+                    <option value="osm">OpenStreetMap</option>
+                    <option value="satellite">Satellite</option>
+                    <option value="terrain">Terrain</option>
+                </select>
+            </div>
+        </div>
+        <div id="map" class="h-96 rounded-lg"></div>
+    </div>
+
+    <!-- Elevation Profile -->
+    <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+        <h2 class="text-xl font-bold text-gray-900 mb-4">Elevation Profile</h2>
+        <div class="h-64">
+            <canvas id="elevation-chart" class="w-full h-full"></canvas>
+        </div>
+    </div>
+
+    <!-- Track Stats -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <div class="flex items-center">
+                <div class="flex-shrink-0">
+                    <div class="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center">
+                        <span class="text-white font-bold">📍</span>
+                    </div>
+                </div>
+                <div class="ml-4">
+                    <p class="text-sm font-medium text-gray-500">Start Point</p>
+                    <p class="text-lg font-semibold text-gray-900">{{printf "%.4f, %.4f" .Track.StartLat .Track.StartLon}}</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <div class="flex items-center">
+                <div class="flex-shrink-0">
+                    <div class="w-10 h-10 bg-red-500 rounded-full flex items-center justify-center">
+                        <span class="text-white font-bold">🏁</span>
+                    </div>
+                </div>
+                <div class="ml-4">
+                    <p class="text-sm font-medium text-gray-500">End Point</p>
+                    <p class="text-lg font-semibold text-gray-900">{{printf "%.4f, %.4f" .Track.EndLat .Track.EndLon}}</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <div class="flex items-center">
+                <div class="flex-shrink-0">
+                    <div class="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center">
+                        <span class="text-white font-bold">⛰️</span>
+                    </div>
+                </div>
+                <div class="ml-4">
+                    <p class="text-sm font-medium text-gray-500">Min Elevation</p>
+                    <p class="text-lg font-semibold text-gray-900 elevation-display" data-meters="{{.Track.MinElevation}}">
+                        {{printf "%.0f m" .Track.MinElevation}}
+                    </p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <div class="flex items-center">
+                <div class="flex-shrink-0">
+                    <div class="w-10 h-10 bg-purple-500 rounded-full flex items-center justify-center">
+                        <span class="text-white font-bold">🏔️</span>
+                    </div>
+                </div>
+                <div class="ml-4">
+                    <p class="text-sm font-medium text-gray-500">Max Elevation</p>
+                    <p class="text-lg font-semibold text-gray-900 elevation-display" data-meters="{{.Track.MaxElevation}}">
+                        {{printf "%.0f m" .Track.MaxElevation}}
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{{end}}
+
+{{define "scripts"}}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const unitToggle = document.getElementById('unit-toggle');
+    const mapStyleSelect = document.getElementById('map-style');
+    
+    // Track data from server
+    const trackData = {{.TrackJSON}};
+    
+    // Initialize map
+    let map = L.map('map');
+    let trackLayer;
+    
+    // Map styles
+    const mapStyles = {
+        osm: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }),
+        satellite: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            attribution: '© Esri, © OpenStreetMap contributors'
+        }),
+        terrain: L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenTopoMap contributors'
+        })
+    };
+    
+    // Add initial map style
+    mapStyles.osm.addTo(map);
+    
+    // Create track
+    function createTrack() {
+        if (trackLayer) {
+            map.removeLayer(trackLayer);
+        }
+        
+        const points = trackData.map(point => [point.lat, point.lon]);
+        
+        trackLayer = L.polyline(points, {
+            color: '#3B82F6',
+            weight: 4,
+            opacity: 0.8
+        }).addTo(map);
+        
+        // Add start/end markers
+        if (points.length > 0) {
+            L.marker(points[0], {
+                icon: L.divIcon({
+                    html: '<div class="bg-green-500 text-white rounded-full w-6 h-6 flex items-center justify-center font-bold">S</div>',
+                    className: 'custom-marker',
+                    iconSize: [24, 24]
+                })
+            }).addTo(map).bindPopup('Start');
+            
+            L.marker(points[points.length - 1], {
+                icon: L.divIcon({
+                    html: '<div class="bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center font-bold">E</div>',
+                    className: 'custom-marker',
+                    iconSize: [24, 24]
+                })
+            }).addTo(map).bindPopup('End');
+        }
+        
+        // Fit map to track
+        map.fitBounds(trackLayer.getBounds(), { padding: [20, 20] });
+    }
+    
+    // Elevation chart
+    function createElevationChart() {
+        const canvas = document.getElementById('elevation-chart');
+        const ctx = canvas.getContext('2d');
+        
+        const points = trackData.filter(point => point.elevation > 0);
+        if (points.length === 0) return;
+        
+        const imperial = unitToggle.checked;
+        const elevations = points.map(point => imperial ? point.elevation * 3.28084 : point.elevation);
+        const maxElevation = Math.max(...elevations);
+        const minElevation = Math.min(...elevations);
+        const range = maxElevation - minElevation;
+        
+        canvas.width = canvas.offsetWidth;
+        canvas.height = canvas.offsetHeight;
+        
+        const width = canvas.width;
+        const height = canvas.height;
+        const padding = 40;
+        
+        ctx.clearRect(0, 0, width, height);
+        
+        // Draw elevation profile
+        ctx.beginPath();
+        ctx.strokeStyle = '#3B82F6';
+        ctx.lineWidth = 2;
+        
+        elevations.forEach((elevation, i) => {
+            const x = padding + (i / (elevations.length - 1)) * (width - 2 * padding);
+            const y = height - padding - ((elevation - minElevation) / range) * (height - 2 * padding);
+            
+            if (i === 0) {
+                ctx.moveTo(x, y);
+            } else {
+                ctx.lineTo(x, y);
+            }
+        });
+        
+        ctx.stroke();
+        
+        // Draw labels
+        ctx.fillStyle = '#6B7280';
+        ctx.font = '12px Arial';
+        ctx.textAlign = 'center';
+        
+        const unit = imperial ? 'ft' : 'm';
+        ctx.fillText(`${minElevation.toFixed(0)} ${unit}`, padding, height - 10);
+        ctx.fillText(`${maxElevation.toFixed(0)} ${unit}`, width - padding, height - 10);
+    }
+    
+    // Unit conversion
+    function updateUnits() {
+        const imperial = unitToggle.checked;
+        document.cookie = `units=${imperial ? 'imperial' : 'metric'}; path=/; max-age=31536000`;
+        
+        document.querySelectorAll('.elevation-display').forEach(elem => {
+            const meters = parseFloat(elem.dataset.meters);
+            if (imperial) {
+                const feet = meters * 3.28084;
+                elem.textContent = `${feet.toFixed(0)} ft`;
+            } else {
+                elem.textContent = `${meters.toFixed(0)} m`;
+            }
+        });
+        
+        createElevationChart();
+    }
+    
+    // Map style change
+    mapStyleSelect.addEventListener('change', function() {
+        const selectedStyle = this.value;
+        map.eachLayer(layer => {
+            if (layer instanceof L.TileLayer) {
+                map.removeLayer(layer);
+            }
+        });
+        mapStyles[selectedStyle].addTo(map);
+    });
+    
+    // Event listeners
+    unitToggle.addEventListener('change', updateUnits);
+    
+    // Initialize
+    createTrack();
+    updateUnits();
+    
+    // Resize handler for elevation chart
+    window.addEventListener('resize', createElevationChart);
+});
+</script>
+{{end}}

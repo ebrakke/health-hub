@@ -1,0 +1,174 @@
+{{define "content"}}
+<div class="max-w-4xl mx-auto">
+    <div class="flex justify-between items-start mb-6">
+        <div>
+            <h1 class="text-3xl font-bold text-gray-900 mb-2">{{.Activity.Name}}</h1>
+            <div class="flex items-center space-x-4 text-gray-600">
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">
+                    {{.Activity.Type}}
+                </span>
+                <span>{{.Activity.StartTime.Format "Monday, January 2, 2006"}}</span>
+            </div>
+        </div>
+        <div class="flex items-center space-x-4">
+            <label class="flex items-center space-x-2">
+                <input type="checkbox" id="unit-toggle" class="form-checkbox" {{if .ImperialUnits}}checked{{end}}>
+                <span class="text-sm text-gray-600">Imperial Units</span>
+            </label>
+            <a href="/activities" class="text-blue-600 hover:text-blue-800 font-medium">
+                ← Back to Activities
+            </a>
+        </div>
+    </div>
+
+    <!-- Key Stats -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <div class="flex items-center">
+                <div class="flex-shrink-0">
+                    <div class="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center">
+                        <span class="text-white font-bold">🏃</span>
+                    </div>
+                </div>
+                <div class="ml-4">
+                    <p class="text-sm font-medium text-gray-500">Distance</p>
+                    <p class="text-2xl font-bold text-gray-900 distance-display" data-meters="{{.Activity.Distance}}">
+                        {{printf "%.2f km" (divf .Activity.Distance 1000)}}
+                    </p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <div class="flex items-center">
+                <div class="flex-shrink-0">
+                    <div class="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center">
+                        <span class="text-white font-bold">⏱️</span>
+                    </div>
+                </div>
+                <div class="ml-4">
+                    <p class="text-sm font-medium text-gray-500">Duration</p>
+                    <p class="text-2xl font-bold text-gray-900">{{.Activity.Duration | formatDuration}}</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <div class="flex items-center">
+                <div class="flex-shrink-0">
+                    <div class="w-10 h-10 bg-yellow-500 rounded-full flex items-center justify-center">
+                        <span class="text-white font-bold">📈</span>
+                    </div>
+                </div>
+                <div class="ml-4">
+                    <p class="text-sm font-medium text-gray-500">Avg Speed</p>
+                    <p class="text-2xl font-bold text-gray-900 speed-display" data-kmh="{{.Activity.AvgSpeed}}">
+                        {{printf "%.1f km/h" .Activity.AvgSpeed}}
+                    </p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <div class="flex items-center">
+                <div class="flex-shrink-0">
+                    <div class="w-10 h-10 bg-purple-500 rounded-full flex items-center justify-center">
+                        <span class="text-white font-bold">⛰️</span>
+                    </div>
+                </div>
+                <div class="ml-4">
+                    <p class="text-sm font-medium text-gray-500">Elevation</p>
+                    <p class="text-2xl font-bold text-gray-900 elevation-display" data-meters="{{.Activity.TotalElevation}}">
+                        {{printf "%.0f m" .Activity.TotalElevation}}
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Additional Stats -->
+    <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+        <h2 class="text-xl font-bold text-gray-900 mb-4">Additional Information</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div>
+                <p class="text-sm font-medium text-gray-500 mb-1">Max Speed</p>
+                <p class="text-lg font-semibold text-gray-900 speed-display" data-kmh="{{.Activity.MaxSpeed}}">
+                    {{printf "%.1f km/h" .Activity.MaxSpeed}}
+                </p>
+            </div>
+            <div>
+                <p class="text-sm font-medium text-gray-500 mb-1">Start Time</p>
+                <p class="text-lg font-semibold text-gray-900">{{.Activity.StartTime.Format "3:04 PM"}}</p>
+            </div>
+            <div>
+                <p class="text-sm font-medium text-gray-500 mb-1">GPS Points</p>
+                <p class="text-lg font-semibold text-gray-900">{{.Activity.TotalPoints}}</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- GPS Track -->
+    {{if .Activity.GPXFile}}
+    <div class="bg-white rounded-lg shadow-md p-6">
+        <div class="flex justify-between items-center mb-4">
+            <h2 class="text-xl font-bold text-gray-900">GPS Track</h2>
+            <a href="/gps-track/{{.Activity.ID}}" 
+               class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition duration-200">
+                View GPS Track
+            </a>
+        </div>
+        <p class="text-gray-600">View the interactive GPS track with elevation profile and detailed route information.</p>
+    </div>
+    {{end}}
+</div>
+{{end}}
+
+{{define "scripts"}}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const unitToggle = document.getElementById('unit-toggle');
+    
+    function updateUnits() {
+        const imperial = unitToggle.checked;
+        document.cookie = `units=${imperial ? 'imperial' : 'metric'}; path=/; max-age=31536000`;
+        
+        // Update distance displays
+        document.querySelectorAll('.distance-display').forEach(elem => {
+            const meters = parseFloat(elem.dataset.meters);
+            if (imperial) {
+                const miles = meters * 0.000621371;
+                elem.textContent = `${miles.toFixed(2)} mi`;
+            } else {
+                const km = meters / 1000;
+                elem.textContent = `${km.toFixed(2)} km`;
+            }
+        });
+        
+        // Update speed displays
+        document.querySelectorAll('.speed-display').forEach(elem => {
+            const kmh = parseFloat(elem.dataset.kmh);
+            if (imperial) {
+                const mph = kmh * 0.621371;
+                elem.textContent = `${mph.toFixed(1)} mph`;
+            } else {
+                elem.textContent = `${kmh.toFixed(1)} km/h`;
+            }
+        });
+        
+        // Update elevation displays
+        document.querySelectorAll('.elevation-display').forEach(elem => {
+            const meters = parseFloat(elem.dataset.meters);
+            if (imperial) {
+                const feet = meters * 3.28084;
+                elem.textContent = `${feet.toFixed(0)} ft`;
+            } else {
+                elem.textContent = `${meters.toFixed(0)} m`;
+            }
+        });
+    }
+    
+    unitToggle.addEventListener('change', updateUnits);
+    updateUnits();
+});
+</script>
+{{end}}

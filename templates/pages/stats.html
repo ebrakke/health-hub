@@ -1,0 +1,237 @@
+{{define "head"}}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{{end}}
+
+{{define "content"}}
+<div class="flex justify-between items-center mb-6">
+    <h1 class="text-3xl font-bold text-gray-900">Statistics Dashboard</h1>
+    <div class="flex items-center space-x-4">
+        <label class="flex items-center space-x-2">
+            <input type="checkbox" id="unit-toggle" class="form-checkbox" {{if .ImperialUnits}}checked{{end}}>
+            <span class="text-sm text-gray-600">Imperial Units</span>
+        </label>
+    </div>
+</div>
+
+<!-- Summary Cards -->
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+    <div class="bg-white rounded-lg shadow-md p-6">
+        <div class="flex items-center">
+            <div class="flex-shrink-0">
+                <div class="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
+                    <span class="text-white font-bold">📊</span>
+                </div>
+            </div>
+            <div class="ml-5 w-0 flex-1">
+                <dl>
+                    <dt class="text-sm font-medium text-gray-500 truncate">Total Activities</dt>
+                    <dd class="text-lg font-medium text-gray-900">{{.TotalActivities}}</dd>
+                </dl>
+            </div>
+        </div>
+    </div>
+    
+    <div class="bg-white rounded-lg shadow-md p-6">
+        <div class="flex items-center">
+            <div class="flex-shrink-0">
+                <div class="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
+                    <span class="text-white font-bold">🏃</span>
+                </div>
+            </div>
+            <div class="ml-5 w-0 flex-1">
+                <dl>
+                    <dt class="text-sm font-medium text-gray-500 truncate">Total Distance</dt>
+                    <dd class="text-lg font-medium text-gray-900 distance-display" data-meters="{{.TotalDistance}}">
+                        {{printf "%.1f km" (divf .TotalDistance 1000)}}
+                    </dd>
+                </dl>
+            </div>
+        </div>
+    </div>
+    
+    <div class="bg-white rounded-lg shadow-md p-6">
+        <div class="flex items-center">
+            <div class="flex-shrink-0">
+                <div class="w-8 h-8 bg-yellow-500 rounded-full flex items-center justify-center">
+                    <span class="text-white font-bold">⏱️</span>
+                </div>
+            </div>
+            <div class="ml-5 w-0 flex-1">
+                <dl>
+                    <dt class="text-sm font-medium text-gray-500 truncate">Total Time</dt>
+                    <dd class="text-lg font-medium text-gray-900">{{.TotalDuration | formatDuration}}</dd>
+                </dl>
+            </div>
+        </div>
+    </div>
+    
+    <div class="bg-white rounded-lg shadow-md p-6">
+        <div class="flex items-center">
+            <div class="flex-shrink-0">
+                <div class="w-8 h-8 bg-purple-500 rounded-full flex items-center justify-center">
+                    <span class="text-white font-bold">📈</span>
+                </div>
+            </div>
+            <div class="ml-5 w-0 flex-1">
+                <dl>
+                    <dt class="text-sm font-medium text-gray-500 truncate">Avg Distance</dt>
+                    <dd class="text-lg font-medium text-gray-900 distance-display" data-meters="{{.AvgDistance}}">
+                        {{printf "%.1f km" (divf .AvgDistance 1000)}}
+                    </dd>
+                </dl>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Charts -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+    <div class="bg-white rounded-lg shadow-md p-6">
+        <h2 class="text-xl font-bold text-gray-900 mb-4">Daily Distance - Last 7 Days</h2>
+        <canvas id="dailyChart" width="400" height="200"></canvas>
+    </div>
+    
+    <div class="bg-white rounded-lg shadow-md p-6">
+        <h2 class="text-xl font-bold text-gray-900 mb-4">Weekly Distance - Last 30 Days</h2>
+        <canvas id="weeklyChart" width="400" height="200"></canvas>
+    </div>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <div class="bg-white rounded-lg shadow-md p-6">
+        <h2 class="text-xl font-bold text-gray-900 mb-4">Activity Types</h2>
+        <canvas id="typeChart" width="400" height="200"></canvas>
+    </div>
+    
+    <div class="bg-white rounded-lg shadow-md p-6">
+        <h2 class="text-xl font-bold text-gray-900 mb-4">Recent Activities</h2>
+        <div class="space-y-3">
+            {{range .RecentActivities}}
+            <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div>
+                    <p class="font-medium text-gray-900">{{.Name}}</p>
+                    <p class="text-sm text-gray-600">{{.Type}} • {{.StartTime.Format "Jan 2, 2006"}}</p>
+                </div>
+                <div class="text-right">
+                    <p class="font-medium text-gray-900 distance-display" data-meters="{{.Distance}}">
+                        {{printf "%.1f km" (divf .Distance 1000)}}
+                    </p>
+                    <p class="text-sm text-gray-600">{{.Duration | formatDuration}}</p>
+                </div>
+            </div>
+            {{end}}
+        </div>
+    </div>
+</div>
+{{end}}
+
+{{define "scripts"}}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const unitToggle = document.getElementById('unit-toggle');
+    
+    // Unit conversion
+    function updateUnits() {
+        const imperial = unitToggle.checked;
+        document.cookie = `units=${imperial ? 'imperial' : 'metric'}; path=/; max-age=31536000`;
+        
+        document.querySelectorAll('.distance-display').forEach(elem => {
+            const meters = parseFloat(elem.dataset.meters);
+            if (imperial) {
+                const miles = meters * 0.000621371;
+                elem.textContent = `${miles.toFixed(1)} mi`;
+            } else {
+                const km = meters / 1000;
+                elem.textContent = `${km.toFixed(1)} km`;
+            }
+        });
+    }
+    
+    unitToggle.addEventListener('change', updateUnits);
+    
+    // Chart data from server
+    const dailyData = {{.DailyData}};
+    const weeklyData = {{.WeeklyData}};
+    const typeData = {{.TypeData}};
+    
+    // Daily Chart
+    const dailyCtx = document.getElementById('dailyChart').getContext('2d');
+    new Chart(dailyCtx, {
+        type: 'line',
+        data: {
+            labels: dailyData.labels,
+            datasets: [{
+                label: 'Distance (km)',
+                data: dailyData.values,
+                borderColor: 'rgb(59, 130, 246)',
+                backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                tension: 0.1
+            }]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            }
+        }
+    });
+    
+    // Weekly Chart
+    const weeklyCtx = document.getElementById('weeklyChart').getContext('2d');
+    new Chart(weeklyCtx, {
+        type: 'bar',
+        data: {
+            labels: weeklyData.labels,
+            datasets: [{
+                label: 'Distance (km)',
+                data: weeklyData.values,
+                backgroundColor: 'rgba(34, 197, 94, 0.8)',
+                borderColor: 'rgb(34, 197, 94)',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            }
+        }
+    });
+    
+    // Type Chart
+    const typeCtx = document.getElementById('typeChart').getContext('2d');
+    new Chart(typeCtx, {
+        type: 'doughnut',
+        data: {
+            labels: typeData.labels,
+            datasets: [{
+                data: typeData.values,
+                backgroundColor: [
+                    '#EF4444',
+                    '#F59E0B',
+                    '#10B981',
+                    '#3B82F6',
+                    '#8B5CF6',
+                    '#EC4899'
+                ]
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: {
+                    position: 'bottom'
+                }
+            }
+        }
+    });
+    
+    // Initialize
+    updateUnits();
+});
+</script>
+{{end}}

@@ -1,0 +1,152 @@
+{{define "content"}}
+<div class="max-w-4xl mx-auto">
+    <div class="text-center mb-8">
+        <h1 class="text-3xl font-bold text-gray-900 mb-2">Bulk Upload</h1>
+        <p class="text-gray-600">Upload multiple GPX files at once</p>
+    </div>
+
+    <div class="bg-white rounded-lg shadow-md p-8">
+        <div class="mb-6">
+            <h2 class="text-xl font-bold text-gray-900 mb-4">Select GPX Files</h2>
+            <p class="text-gray-600 mb-4">Choose multiple GPX files to upload simultaneously. Each file will be processed and added as a separate activity.</p>
+        </div>
+
+        <form id="bulk-upload-form" hx-post="/api/upload/bulk-gpx" hx-encoding="multipart/form-data"
+              hx-target="#upload-results" hx-swap="innerHTML" hx-indicator="#loading">
+            <div class="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-gray-400 transition-colors duration-200"
+                 id="drop-zone">
+                <div class="space-y-4">
+                    <div class="flex justify-center">
+                        <svg class="w-16 h-16 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                        </svg>
+                    </div>
+                    <div>
+                        <p class="text-xl font-medium text-gray-900">Drop GPX files here</p>
+                        <p class="text-gray-600">or click to select files</p>
+                    </div>
+                    <div>
+                        <button type="button" id="file-button" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition duration-200">
+                            Select Files
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <input type="file" id="file-input" name="gpx-files" multiple accept=".gpx" class="hidden" required>
+            
+            <div id="file-list" class="mt-4 space-y-2"></div>
+            
+            <div class="mt-6 flex justify-between items-center">
+                <div id="file-count" class="text-gray-600"></div>
+                <button type="submit" id="upload-button" class="bg-green-500 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                    Upload All Files
+                </button>
+            </div>
+        </form>
+
+        <div id="loading" class="hidden mt-6 text-center">
+            <div class="inline-flex items-center space-x-2">
+                <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500"></div>
+                <span class="text-gray-600">Processing uploads...</span>
+            </div>
+        </div>
+
+        <div id="upload-results" class="mt-6"></div>
+    </div>
+</div>
+{{end}}
+
+{{define "scripts"}}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const dropZone = document.getElementById('drop-zone');
+    const fileInput = document.getElementById('file-input');
+    const fileButton = document.getElementById('file-button');
+    const fileList = document.getElementById('file-list');
+    const fileCount = document.getElementById('file-count');
+    const uploadButton = document.getElementById('upload-button');
+    
+    // File selection
+    fileButton.addEventListener('click', function() {
+        fileInput.click();
+    });
+    
+    fileInput.addEventListener('change', function() {
+        updateFileList();
+    });
+    
+    // Drag and drop
+    dropZone.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        dropZone.classList.add('border-blue-500', 'bg-blue-50');
+    });
+    
+    dropZone.addEventListener('dragleave', function(e) {
+        e.preventDefault();
+        dropZone.classList.remove('border-blue-500', 'bg-blue-50');
+    });
+    
+    dropZone.addEventListener('drop', function(e) {
+        e.preventDefault();
+        dropZone.classList.remove('border-blue-500', 'bg-blue-50');
+        
+        const files = e.dataTransfer.files;
+        fileInput.files = files;
+        updateFileList();
+    });
+    
+    function updateFileList() {
+        const files = fileInput.files;
+        fileList.innerHTML = '';
+        
+        if (files.length === 0) {
+            fileCount.textContent = '';
+            uploadButton.disabled = true;
+            return;
+        }
+        
+        fileCount.textContent = `${files.length} file${files.length === 1 ? '' : 's'} selected`;
+        uploadButton.disabled = false;
+        
+        Array.from(files).forEach(function(file, index) {
+            const fileItem = document.createElement('div');
+            fileItem.className = 'flex items-center justify-between p-3 bg-gray-50 rounded-lg';
+            fileItem.innerHTML = `
+                <div class="flex items-center space-x-3">
+                    <span class="flex-shrink-0 w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                        <svg class="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                        </svg>
+                    </span>
+                    <div>
+                        <p class="font-medium text-gray-900">${file.name}</p>
+                        <p class="text-sm text-gray-600">${(file.size / 1024).toFixed(1)} KB</p>
+                    </div>
+                </div>
+                <button type="button" class="text-red-600 hover:text-red-800" onclick="removeFile(${index})">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+            `;
+            fileList.appendChild(fileItem);
+        });
+    }
+    
+    window.removeFile = function(index) {
+        const dt = new DataTransfer();
+        const files = fileInput.files;
+        
+        for (let i = 0; i < files.length; i++) {
+            if (i !== index) {
+                dt.items.add(files[i]);
+            }
+        }
+        
+        fileInput.files = dt.files;
+        updateFileList();
+    };
+});
+</script>
+{{end}}

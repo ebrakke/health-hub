@@ -12,14 +12,23 @@ import (
 	"health-hub/internal/gpx"
 	"health-hub/internal/models"
 	"health-hub/internal/storage"
+	"health-hub/internal/templates"
 )
 
 type Handlers struct {
-	storage storage.Storage
+	storage   storage.Storage
+	templates *templates.Templates
 }
 
 func NewHandlers(s storage.Storage) *Handlers {
-	return &Handlers{storage: s}
+	tmpl := templates.NewTemplates()
+	if err := tmpl.LoadTemplates(); err != nil {
+		panic(fmt.Sprintf("Failed to load templates: %v", err))
+	}
+	return &Handlers{
+		storage:   s,
+		templates: tmpl,
+	}
 }
 
 func (h *Handlers) Home(w http.ResponseWriter, r *http.Request) {
@@ -28,105 +37,22 @@ func (h *Handlers) Home(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tmpl := `
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Health Hub</title>
-    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
-</head>
-<body class="bg-gray-100 min-h-screen">
-    <div class="container mx-auto px-4 py-8 max-w-4xl">
-        <div class="text-center mb-8">
-            <h1 class="text-4xl font-bold text-gray-900 mb-2">Health Hub</h1>
-            <p class="text-gray-600">Upload and manage your health and fitness data</p>
-        </div>
-        
-        <div class="bg-white rounded-lg shadow-md p-6 mb-8">
-            <h2 class="text-2xl font-bold text-gray-900 mb-6">Upload Data</h2>
-            
-            <div class="grid md:grid-cols-2 gap-6">
-                <div>
-                    <h3 class="text-lg font-semibold text-gray-900 mb-3">GPX Files</h3>
-                    <form hx-post="/api/upload/gpx" hx-encoding="multipart/form-data" 
-                          hx-target="#gpx-status" hx-swap="innerHTML">
-                        <input type="file" name="gpx" accept=".gpx" required 
-                               class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 mb-3">
-                        <button type="submit" class="w-full bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition duration-200">
-                            Upload GPX
-                        </button>
-                    </form>
-                    <div id="gpx-status" class="mt-2"></div>
-                </div>
-                
-                <div>
-                    <h3 class="text-lg font-semibold text-gray-900 mb-3">Health Data (JSON)</h3>
-                    <form hx-post="/api/upload/health" hx-encoding="multipart/form-data" 
-                          hx-target="#health-status" hx-swap="innerHTML">
-                        <input type="file" name="health" accept=".json" required 
-                               class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-green-50 file:text-green-700 hover:file:bg-green-100 mb-3">
-                        <button type="submit" class="w-full bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded transition duration-200">
-                            Upload Health Data
-                        </button>
-                    </form>
-                    <div id="health-status" class="mt-2"></div>
-                </div>
-            </div>
-        </div>
-        
-        <div class="bg-white rounded-lg shadow-md p-6 mb-8">
-            <h2 class="text-2xl font-bold text-gray-900 mb-6">Your Data</h2>
-            <div class="grid md:grid-cols-2 gap-6">
-                <div hx-get="/api/stats/activities" hx-trigger="load, every 30s" 
-                     hx-target="this" hx-swap="innerHTML"
-                     class="bg-gradient-to-r from-blue-50 to-blue-100 p-6 rounded-lg">
-                    <h3 class="text-lg font-semibold text-gray-900 mb-2">Activities</h3>
-                    <p class="text-gray-600">Loading...</p>
-                </div>
-                
-                <div hx-get="/api/stats/health" hx-trigger="load, every 30s" 
-                     hx-target="this" hx-swap="innerHTML"
-                     class="bg-gradient-to-r from-green-50 to-green-100 p-6 rounded-lg">
-                    <h3 class="text-lg font-semibold text-gray-900 mb-2">Health Metrics</h3>
-                    <p class="text-gray-600">Loading...</p>
-                </div>
-            </div>
-        </div>
+	data := struct {
+		Title string
+	}{
+		Title: "Home",
+	}
 
-        <div class="bg-white rounded-lg shadow-md p-6 mb-8">
-            <h2 class="text-2xl font-bold text-gray-900 mb-6">Explore Your Data</h2>
-            <div class="grid md:grid-cols-2 gap-6">
-                <a href="/activities" class="block bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white p-6 rounded-lg transition duration-200 transform hover:scale-105">
-                    <h3 class="text-xl font-semibold mb-2">📊 Activity Log</h3>
-                    <p class="text-blue-100">View all your activities with detailed information and GPX data</p>
-                </a>
-                
-                <a href="/stats" class="block bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white p-6 rounded-lg transition duration-200 transform hover:scale-105">
-                    <h3 class="text-xl font-semibold mb-2">📈 Stats & Trends</h3>
-                    <p class="text-purple-100">Analyze your fitness progress with charts and weekly trends</p>
-                </a>
-            </div>
-        </div>
+	tmpl := h.templates.GetTemplate("home")
+	if tmpl == nil {
+		http.Error(w, "Template not found", http.StatusInternalServerError)
+		return
+	}
 
-        <div class="bg-white rounded-lg shadow-md p-6">
-            <h2 class="text-2xl font-bold text-gray-900 mb-6">Need to Upload Multiple Files?</h2>
-            <div class="text-center">
-                <a href="/bulk-upload" class="inline-block bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white p-6 rounded-lg transition duration-200 transform hover:scale-105">
-                    <h3 class="text-xl font-semibold mb-2">📁 Bulk Upload</h3>
-                    <p class="text-orange-100">Upload multiple GPX files at once with drag-and-drop support</p>
-                    <p class="text-orange-200 text-sm mt-2">Perfect for importing your historical activity data</p>
-                </a>
-            </div>
-        </div>
-    </div>
-</body>
-</html>`
-
-	t, _ := template.New("home").Parse(tmpl)
-	t.Execute(w, nil)
+	if err := tmpl.Execute(w, data); err != nil {
+		http.Error(w, "Error executing template", http.StatusInternalServerError)
+		return
+	}
 }
 
 func (h *Handlers) Upload(w http.ResponseWriter, r *http.Request) {
