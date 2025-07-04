@@ -28,21 +28,18 @@ func (t *Templates) LoadTemplates() error {
 	pages := []string{"home", "activities", "stats", "bulk-upload", "activity-detail", "gps-track"}
 
 	for _, page := range pages {
-		tmpl := template.New(page).Funcs(funcMap)
+		// Parse both base and page template together
+		baseFile := "templates/layouts/base.html"
+		pageFile := filepath.Join("templates/pages", page+".html")
 		
-		// Parse base layout
-		tmpl, err := tmpl.ParseFiles("templates/layouts/base.html")
+		tmpl, err := template.New(page).Funcs(funcMap).ParseFiles(baseFile, pageFile)
 		if err != nil {
-			return err
-		}
-		
-		// Parse page template
-		tmpl, err = tmpl.ParseFiles(filepath.Join("templates/pages", page+".html"))
-		if err != nil {
+			fmt.Printf("Error parsing templates for %s (base: %s, page: %s): %v\n", page, baseFile, pageFile, err)
 			return err
 		}
 		
 		t.templates[page] = tmpl
+		fmt.Printf("Successfully loaded template: %s\n", page)
 	}
 
 	return nil

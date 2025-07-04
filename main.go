@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os/exec"
 	"strings"
+	"time"
 
 	"health-hub/internal/config"
 	"health-hub/internal/handlers"
@@ -67,7 +68,44 @@ func main() {
 	}
 	
 	fmt.Printf("=== Server Running ===\n")
-	log.Fatal(http.ListenAndServe(":"+cfg.Port, mux))
+	log.Fatal(http.ListenAndServe(":"+cfg.Port, loggingMiddleware(mux)))
+}
+
+// loggingMiddleware logs HTTP requests with method, path, status code, and response time
+func loggingMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		
+		// Create a response writer wrapper to capture status code
+		lrw := &loggingResponseWriter{
+			ResponseWriter: w,
+			statusCode:     http.StatusOK,
+		}
+		
+		// Call the next handler
+		next.ServeHTTP(lrw, r)
+		
+		// Log the request
+		duration := time.Since(start)
+		log.Printf("%s %s %d %v %s", 
+			r.Method, 
+			r.URL.Path, 
+			lrw.statusCode, 
+			duration, 
+			r.RemoteAddr,
+		)
+	})
+}
+
+// loggingResponseWriter wraps http.ResponseWriter to capture status code
+type loggingResponseWriter struct {
+	http.ResponseWriter
+	statusCode int
+}
+
+func (lrw *loggingResponseWriter) WriteHeader(code int) {
+	lrw.statusCode = code
+	lrw.ResponseWriter.WriteHeader(code)
 }
 
 func showTailscaleInfo(port string) error {

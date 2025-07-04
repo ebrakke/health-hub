@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"health-hub/internal/models"
+	"health-hub/internal/config"
 )
 
 // GPX XML structure
@@ -31,6 +32,11 @@ type TrackPoint struct {
 }
 
 func ParseGPX(content string) (*models.GPXTrack, *models.Activity, error) {
+	cfg := config.Load()
+	return ParseGPXWithConfig(content, cfg)
+}
+
+func ParseGPXWithConfig(content string, cfg *config.Config) (*models.GPXTrack, *models.Activity, error) {
 	var gpx GPX
 	err := xml.Unmarshal([]byte(content), &gpx)
 	if err != nil {
@@ -84,10 +90,7 @@ func ParseGPX(content string) (*models.GPXTrack, *models.Activity, error) {
 					dist := haversineDistance(prevPoint.Lat, prevPoint.Lon, point.Lat, point.Lon)
 					totalDistance += dist
 
-					// Calculate elevation gain
-					if point.Elevation > prevPoint.Elevation {
-						totalElevation += point.Elevation - prevPoint.Elevation
-					}
+					// Note: Elevation calculation moved to after all points are collected
 
 					// Calculate speed if we have time data
 					if !prevPoint.Time.IsZero() && !point.Time.IsZero() {
@@ -107,6 +110,9 @@ func ParseGPX(content string) (*models.GPXTrack, *models.Activity, error) {
 			}
 		}
 	}
+
+	// Calculate elevation gain using smoothing algorithm
+	totalElevation = calculateSmoothedElevation(track.Points, cfg)
 
 	// Calculate average speed
 	var avgSpeed float64
@@ -148,4 +154,115 @@ func haversineDistance(lat1, lon1, lat2, lon2 float64) float64 {
 	c := 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
 
 	return earthRadius * c
+}
+
+// calculateSmoothedElevation calculates elevation gain using a smoothing algorithm
+// to filter out GPS noise and only count consistent elevation changes
+func calculateSmoothedElevation(points []models.GPXPoint, cfg *config.Config) float64 {
+	if !cfg.ElevationSmoothingEnabled || len(points) < 2 {
+		return calculateSimpleElevation(points)
+	}
+
+	totalElevation := 0.0
+	windowSize := cfg.ElevationSmoothingWindow
+	minGain := cfg.ElevationMinGain
+	
+	// Use a sliding window approach to smooth elevation data
+	for i := 0; i < len(points); i++ {
+		// Calculate the start and end indices for the current window
+		startIdx := i - windowSize/2
+		endIdx := i + windowSize/2
+		
+		// Clamp indices to array bounds
+		if startIdx < 0 {
+			startIdx = 0
+		}
+		if endIdx >= len(points) {
+			endIdx = len(points) - 1
+		}
+		
+		// Skip if we don't have enough points for a meaningful window
+		if endIdx-startIdx < 2 {
+			continue
+		}
+		
+		// Calculate smoothed elevation for this window
+		windowElevations := make([]float64, 0, endIdx-startIdx+1)
+		for j := startIdx; j <= endIdx; j++ {
+			windowElevations = append(windowElevations, points[j].Elevation)
+		}
+		
+		// Use median of the window as the smoothed elevation
+		smoothedElevation := calculateMedian(windowElevations)
+		
+		// If this is not the first point, check for consistent elevation gain
+		if i > 0 {
+			// Get the previous smoothed elevation
+			prevStartIdx := (i-1) - windowSize/2
+			prevEndIdx := (i-1) + windowSize/2
+			
+			if prevStartIdx < 0 {
+				prevStartIdx = 0
+			}
+			if prevEndIdx >= len(points) {
+				prevEndIdx = len(points) - 1
+			}
+			
+			if prevEndIdx-prevStartIdx >= 2 {
+				prevWindowElevations := make([]float64, 0, prevEndIdx-prevStartIdx+1)
+				for j := prevStartIdx; j <= prevEndIdx; j++ {
+					prevWindowElevations = append(prevWindowElevations, points[j].Elevation)
+				}
+				
+				prevSmoothedElevation := calculateMedian(prevWindowElevations)
+				
+				// Only count elevation gain if it's above the minimum threshold
+				elevationDiff := smoothedElevation - prevSmoothedElevation
+				if elevationDiff > minGain {
+					totalElevation += elevationDiff
+				}
+			}
+		}
+	}
+	
+	return totalElevation
+}
+
+// calculateSimpleElevation is the fallback method for simple elevation calculation
+func calculateSimpleElevation(points []models.GPXPoint) float64 {
+	totalElevation := 0.0
+	for i := 1; i < len(points); i++ {
+		if points[i].Elevation > points[i-1].Elevation {
+			totalElevation += points[i].Elevation - points[i-1].Elevation
+		}
+	}
+	return totalElevation
+}
+
+// calculateMedian calculates the median of a slice of float64 values
+func calculateMedian(values []float64) float64 {
+	if len(values) == 0 {
+		return 0
+	}
+	if len(values) == 1 {
+		return values[0]
+	}
+	
+	// Simple bubble sort for small arrays (typically 5-15 elements)
+	sorted := make([]float64, len(values))
+	copy(sorted, values)
+	
+	for i := 0; i < len(sorted); i++ {
+		for j := 0; j < len(sorted)-1-i; j++ {
+			if sorted[j] > sorted[j+1] {
+				sorted[j], sorted[j+1] = sorted[j+1], sorted[j]
+			}
+		}
+	}
+	
+	mid := len(sorted) / 2
+	if len(sorted)%2 == 0 {
+		return (sorted[mid-1] + sorted[mid]) / 2
+	}
+	return sorted[mid]
 }

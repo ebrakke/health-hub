@@ -23,8 +23,10 @@ type Handlers struct {
 func NewHandlers(s storage.Storage) *Handlers {
 	tmpl := templates.NewTemplates()
 	if err := tmpl.LoadTemplates(); err != nil {
+		fmt.Printf("ERROR: Failed to load templates: %v\n", err)
 		panic(fmt.Sprintf("Failed to load templates: %v", err))
 	}
+	fmt.Println("INFO: Templates loaded successfully")
 	return &Handlers{
 		storage:   s,
 		templates: tmpl,
@@ -49,7 +51,8 @@ func (h *Handlers) Home(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := tmpl.Execute(w, data); err != nil {
+	if err := tmpl.ExecuteTemplate(w, "base.html", data); err != nil {
+		fmt.Printf("Template execution error: %v\n", err)
 		http.Error(w, "Error executing template", http.StatusInternalServerError)
 		return
 	}
@@ -67,6 +70,7 @@ func (h *Handlers) GetActivities(w http.ResponseWriter, r *http.Request) {
 
 	activities, err := h.storage.GetActivities()
 	if err != nil {
+		fmt.Printf("ERROR: Failed to get activities: %v\n", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -99,6 +103,7 @@ func (h *Handlers) UploadGPX(w http.ResponseWriter, r *http.Request) {
 
 	file, header, err := r.FormFile("gpx")
 	if err != nil {
+		fmt.Printf("ERROR: Failed to read GPX file: %v\n", err)
 		http.Error(w, "Error reading file", http.StatusBadRequest)
 		return
 	}
@@ -120,6 +125,7 @@ func (h *Handlers) UploadGPX(w http.ResponseWriter, r *http.Request) {
 	// Parse GPX and create activity record
 	track, activity, err := gpx.ParseGPX(string(data))
 	if err != nil {
+		fmt.Printf("ERROR: Failed to parse GPX file %s: %v\n", header.Filename, err)
 		http.Error(w, "Error parsing GPX file", http.StatusBadRequest)
 		return
 	}

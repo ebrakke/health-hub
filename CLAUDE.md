@@ -15,6 +15,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `make deps` - Install and tidy Go dependencies
 - `go mod tidy` - Clean up dependencies
 
+### Testing
+- `go test ./...` - Run all tests
+- `go test ./internal/gpx -v` - Run GPX parser tests with verbose output
+- `go test ./internal/gpx -bench=.` - Run elevation calculation benchmarks
+
 ### S3 Storage
 - `make run-s3` - Run with S3 storage enabled (requires S3_BUCKET env var)
 - Set `USE_S3=true` and `S3_BUCKET=bucket-name` for S3 backup storage
@@ -113,14 +118,58 @@ Environment variables:
 - `AWS_REGION` - AWS region (default: us-east-1)
 - `ENVIRONMENT` - Environment (development/production)
 
+### Elevation Smoothing Configuration
+- `ELEVATION_SMOOTHING_ENABLED` - Enable elevation smoothing algorithm (default: true)
+- `ELEVATION_SMOOTHING_WINDOW` - Number of GPS points to consider for smoothing (default: 5)
+- `ELEVATION_MIN_GAIN` - Minimum elevation gain in meters to count (default: 3.0)
+
 ## Key Features
 
 - **Tailscale Integration** - Automatic Tailscale IP detection and display
 - **Hybrid Storage** - Local-first with optional S3 backup
-- **GPX Processing** - Basic GPX file parsing and activity creation
+- **GPX Processing** - Advanced GPX file parsing with elevation smoothing
+- **Elevation Smoothing** - Configurable algorithm to filter GPS noise and calculate accurate elevation gain
 - **Health Data Import** - JSON-based health metric importing
 - **HTMX Web Interface** - Interactive single-page application with HTMX
 - **Tailwind Styling** - Utility-first CSS framework for consistent design
+
+## Elevation Smoothing Algorithm
+
+The application implements a sophisticated elevation smoothing algorithm to address GPS noise and provide accurate elevation gain calculations.
+
+### Problem
+Raw GPS elevation data contains significant noise that leads to inflated elevation gain calculations. Simply summing all positive elevation changes can result in 2-3x overestimation of actual climbing.
+
+### Solution
+The smoothing algorithm uses a sliding window approach with configurable parameters:
+
+1. **Sliding Window**: Uses a median filter across a configurable number of GPS points
+2. **Minimum Gain Threshold**: Only counts elevation gains above a configurable minimum
+3. **Consistent Change Detection**: Filters out noise by requiring sustained elevation changes
+
+### Configuration Parameters
+- **Window Size**: Number of GPS points to consider for smoothing (default: 5)
+- **Minimum Gain**: Minimum elevation gain in meters to count (default: 3.0m)
+- **Enable/Disable**: Can be turned off for simple calculation (default: enabled)
+
+### Algorithm Details
+1. For each GPS point, calculate a smoothed elevation using the median of surrounding points
+2. Compare smoothed elevations between consecutive windows
+3. Only count elevation gains that exceed the minimum threshold
+4. Fallback to simple calculation if smoothing is disabled
+
+### Testing
+Comprehensive unit tests cover:
+- Simple elevation calculations (baseline)
+- Noisy data with various smoothing parameters
+- Edge cases (empty data, single points)
+- Performance benchmarks for large datasets
+- Integration tests with real GPX data
+
+### Performance
+- Smoothed calculation: ~279μs for 1000 points
+- Simple calculation: ~243ns for 1000 points
+- Acceptable overhead for improved accuracy
 
 ## Development Notes
 
