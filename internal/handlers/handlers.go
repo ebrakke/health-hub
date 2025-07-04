@@ -271,6 +271,12 @@ func (h *Handlers) Activities(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Get unit preference from cookie or default to metric
+	useImperial := false
+	if cookie, err := r.Cookie("units"); err == nil && cookie.Value == "imperial" {
+		useImperial = true
+	}
+
 	tmpl := `
 <!DOCTYPE html>
 <html>
@@ -278,107 +284,260 @@ func (h *Handlers) Activities(w http.ResponseWriter, r *http.Request) {
     <title>Activities - Health Hub</title>
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sortable-tablesort@2.0.0/sortable.min.js"></script>
 </head>
-<body class="bg-gray-50">
-    <div class="max-w-6xl mx-auto p-6">
-        <div class="mb-6">
-            <h1 class="text-3xl font-bold text-gray-900 mb-2">Activities</h1>
-            <p class="text-gray-600">Your uploaded GPX activities and their statistics</p>
-            <a href="/" class="inline-block mt-4 bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
-                Back to Home
-            </a>
+<body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto px-4 py-8 max-w-7xl">
+        <!-- Header -->
+        <div class="flex justify-between items-center mb-8">
+            <div>
+                <h1 class="text-4xl font-bold text-gray-900 mb-2">Activities</h1>
+                <p class="text-gray-600">Your fitness journey</p>
+            </div>
+            <div class="flex items-center space-x-4">
+                <!-- Unit Toggle -->
+                <div class="flex items-center space-x-2">
+                    <span class="text-sm text-gray-600">Units:</span>
+                    <button id="unit-toggle" class="{{if .UseImperial}}bg-orange-500{{else}}bg-blue-500{{end}} text-white px-3 py-1 rounded text-sm font-medium hover:opacity-80 transition-opacity">
+                        {{if .UseImperial}}Imperial{{else}}Metric{{end}}
+                    </button>
+                </div>
+                <a href="/" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition duration-200">
+                    Back to Home
+                </a>
+            </div>
         </div>
 
-        <div class="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {{range .Activities}}
-            <div class="bg-white rounded-lg shadow-md p-6">
-                <h3 class="text-lg font-semibold text-gray-900 mb-2">{{.Name}}</h3>
-                <div class="space-y-2 text-sm text-gray-600">
-                    <div class="flex justify-between">
-                        <span>Type:</span>
-                        <span class="font-medium">{{.Type}}</span>
-                    </div>
-                    <div class="flex justify-between">
-                        <span>Distance:</span>
-                        <span class="font-medium">{{printf "%.2f km" (div .Distance 1000)}}</span>
-                    </div>
-                    <div class="flex justify-between">
-                        <span>Duration:</span>
-                        <span class="font-medium">{{formatDuration .Duration}}</span>
-                    </div>
-                    <div class="flex justify-between">
-                        <span>Avg Speed:</span>
-                        <span class="font-medium">{{printf "%.1f km/h" .AvgSpeed}}</span>
-                    </div>
-                    <div class="flex justify-between">
-                        <span>Max Speed:</span>
-                        <span class="font-medium">{{printf "%.1f km/h" .MaxSpeed}}</span>
-                    </div>
-                    <div class="flex justify-between">
-                        <span>Elevation:</span>
-                        <span class="font-medium">{{printf "%.0f m" .TotalElevation}}</span>
-                    </div>
-                    <div class="flex justify-between">
-                        <span>GPS Points:</span>
-                        <span class="font-medium">{{.TotalPoints}}</span>
-                    </div>
-                    <div class="flex justify-between">
-                        <span>Date:</span>
-                        <span class="font-medium">{{.StartTime.Format "2006-01-02"}}</span>
-                    </div>
+        {{if .Activities}}
+        <!-- Search and Filters -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+            <div class="flex flex-col md:flex-row md:items-center md:justify-between space-y-4 md:space-y-0">
+                <div class="flex-1 max-w-md">
+                    <input type="text" id="search-input" placeholder="Search activities..." 
+                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                </div>
+                <div class="flex items-center space-x-4">
+                    <select id="type-filter" class="px-3 py-2 border border-gray-300 rounded-lg">
+                        <option value="">All Types</option>
+                        <option value="running">Running</option>
+                        <option value="cycling">Cycling</option>
+                        <option value="walking">Walking</option>
+                        <option value="hiking">Hiking</option>
+                    </select>
+                    <span class="text-sm text-gray-600">{{len .Activities}} activities</span>
                 </div>
             </div>
-            {{end}}
         </div>
 
-        {{if eq (len .Activities) 0}}
-        <div class="text-center py-12">
-            <div class="text-gray-500">
-                <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        <!-- Activities Table -->
+        <div class="bg-white rounded-lg shadow-md overflow-hidden">
+            <div class="overflow-x-auto">
+                <table id="activities-table" class="min-w-full divide-y divide-gray-200 sortable">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100">
+                                Activity
+                            </th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100">
+                                Type
+                            </th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100">
+                                Date
+                            </th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100">
+                                Distance
+                            </th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100">
+                                Duration
+                            </th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100">
+                                Avg Speed
+                            </th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Actions
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        {{range .Activities}}
+                        <tr class="hover:bg-gray-50 cursor-pointer activity-row" data-activity-id="{{.ID}}" data-type="{{.Type}}">
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <div class="flex items-center">
+                                    <div class="flex-shrink-0 h-10 w-10">
+                                        <div class="h-10 w-10 rounded-full bg-{{getTypeColor .Type}}-100 flex items-center justify-center">
+                                            <span class="text-{{getTypeColor .Type}}-600 font-medium text-sm">{{getTypeIcon .Type}}</span>
+                                        </div>
+                                    </div>
+                                    <div class="ml-4">
+                                        <div class="text-sm font-medium text-gray-900">{{.Name}}</div>
+                                        {{if .GPXFile}}
+                                        <div class="text-sm text-gray-500">GPS Track Available</div>
+                                        {{end}}
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-{{getTypeColor .Type}}-100 text-{{getTypeColor .Type}}-800">
+                                    {{.Type}}
+                                </span>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900" data-sort="{{.StartTime.Unix}}">
+                                {{.StartTime.Format "Jan 2, 2006"}}
+                                <div class="text-xs text-gray-500">{{.StartTime.Format "3:04 PM"}}</div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900" data-sort="{{.Distance}}">
+                                <span class="font-medium">{{if $.UseImperial}}{{printf "%.1f" (metersToMiles .Distance)}} mi{{else}}{{printf "%.1f" (metersToKm .Distance)}} km{{end}}</span>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900" data-sort="{{.Duration}}">
+                                {{formatDuration .Duration}}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900" data-sort="{{.AvgSpeed}}">
+                                {{if $.UseImperial}}{{printf "%.1f" (kmhToMph .AvgSpeed)}} mph{{else}}{{printf "%.1f" .AvgSpeed}} km/h{{end}}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                <a href="/activity/{{.ID}}" class="text-blue-600 hover:text-blue-900">View Details</a>
+                            </td>
+                        </tr>
+                        {{end}}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {{else}}
+        <div class="bg-white rounded-lg shadow-md">
+            <div class="px-6 py-12 text-center">
+                <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
                 </svg>
-                <h3 class="mt-2 text-sm font-medium text-gray-900">No activities</h3>
-                <p class="mt-1 text-sm text-gray-500">Get started by uploading your first GPX file.</p>
-                <div class="mt-6">
-                    <a href="/" class="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">
-                        Upload GPX File
+                <h3 class="mt-2 text-sm font-medium text-gray-900">No activities yet</h3>
+                <p class="mt-1 text-sm text-gray-500">Get started by uploading a GPX file.</p>
+                <div class="mt-6 space-x-4">
+                    <a href="/" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition duration-200">
+                        Single Upload
+                    </a>
+                    <a href="/bulk-upload" class="bg-orange-500 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded transition duration-200">
+                        Bulk Upload
                     </a>
                 </div>
             </div>
         </div>
         {{end}}
     </div>
+
+    <script>
+        // Unit toggle functionality
+        document.getElementById('unit-toggle').addEventListener('click', function() {
+            const currentUnit = this.textContent.trim();
+            const newUnit = currentUnit === 'Metric' ? 'imperial' : 'metric';
+            
+            // Set cookie
+            document.cookie = 'units=' + newUnit + '; path=/; max-age=' + (365 * 24 * 60 * 60);
+            
+            // Reload page to apply new units
+            window.location.reload();
+        });
+
+        // Search functionality
+        const searchInput = document.getElementById('search-input');
+        const typeFilter = document.getElementById('type-filter');
+        const tableRows = document.querySelectorAll('.activity-row');
+
+        function filterTable() {
+            const searchTerm = searchInput.value.toLowerCase();
+            const selectedType = typeFilter.value.toLowerCase();
+
+            tableRows.forEach(row => {
+                const activityName = row.querySelector('td:first-child .text-sm.font-medium').textContent.toLowerCase();
+                const activityType = row.dataset.type.toLowerCase();
+                
+                const matchesSearch = activityName.includes(searchTerm);
+                const matchesType = !selectedType || activityType === selectedType;
+                
+                row.style.display = matchesSearch && matchesType ? '' : 'none';
+            });
+        }
+
+        searchInput.addEventListener('input', filterTable);
+        typeFilter.addEventListener('change', filterTable);
+
+        // Row click to view activity
+        tableRows.forEach(row => {
+            row.addEventListener('click', function(e) {
+                if (e.target.tagName !== 'A') {
+                    const activityId = this.dataset.activityId;
+                    window.location.href = '/activity/' + activityId;
+                }
+            });
+        });
+
+        // Initialize sortable table
+        if (typeof Sortable !== 'undefined') {
+            Sortable.initTable(document.getElementById('activities-table'));
+        }
+    </script>
 </body>
 </html>`
 
 	funcMap := template.FuncMap{
-		"div": func(a, b float64) float64 {
-			if b == 0 {
-				return 0
-			}
-			return a / b
+		"metersToKm": func(meters float64) float64 {
+			return meters / 1000
+		},
+		"metersToMiles": func(meters float64) float64 {
+			return meters * 0.000621371
+		},
+		"kmhToMph": func(kmh float64) float64 {
+			return kmh * 0.621371
 		},
 		"formatDuration": func(seconds int) string {
-			duration := time.Duration(seconds) * time.Second
-			hours := int(duration.Hours())
-			minutes := int(duration.Minutes()) % 60
+			hours := seconds / 3600
+			minutes := (seconds % 3600) / 60
 			if hours > 0 {
-				return fmt.Sprintf("%dh %dm", hours, minutes)
+				return fmt.Sprintf("%d:%02d:%02d", hours, minutes, seconds%60)
 			}
-			return fmt.Sprintf("%dm", minutes)
+			return fmt.Sprintf("%d:%02d", minutes, seconds%60)
 		},
+		"getTypeColor": func(activityType string) string {
+			switch strings.ToLower(activityType) {
+			case "running":
+				return "red"
+			case "cycling":
+				return "blue"
+			case "walking":
+				return "green"
+			case "hiking":
+				return "yellow"
+			default:
+				return "gray"
+			}
+		},
+		"getTypeIcon": func(activityType string) string {
+			switch strings.ToLower(activityType) {
+			case "running":
+				return "🏃"
+			case "cycling":
+				return "🚴"
+			case "walking":
+				return "🚶"
+			case "hiking":
+				return "🥾"
+			default:
+				return "🏃"
+			}
+		},
+	}
+
+	data := struct {
+		Activities  []*models.Activity
+		UseImperial bool
+	}{
+		Activities:  activities,
+		UseImperial: useImperial,
 	}
 
 	t, err := template.New("activities").Funcs(funcMap).Parse(tmpl)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
-	}
-
-	data := struct {
-		Activities []*models.Activity
-	}{
-		Activities: activities,
 	}
 
 	t.Execute(w, data)
@@ -443,6 +602,12 @@ func (h *Handlers) Stats(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+
+	// Get unit preference from cookie
+	useImperial := false
+	if cookie, err := r.Cookie("units"); err == nil && cookie.Value == "imperial" {
+		useImperial = true
 	}
 
 	// Calculate stats for different time periods
@@ -560,16 +725,27 @@ func (h *Handlers) Stats(w http.ResponseWriter, r *http.Request) {
                 <h1 class="text-4xl font-bold text-gray-900 mb-2">Activity Stats</h1>
                 <p class="text-gray-600">Your fitness journey overview</p>
             </div>
-            <a href="/" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition duration-200">
-                Back to Home
-            </a>
+            <div class="flex items-center space-x-4">
+                <!-- Unit Toggle -->
+                <div class="flex items-center space-x-2">
+                    <span class="text-sm text-gray-600">Units:</span>
+                    <button id="unit-toggle" class="{{if .UseImperial}}bg-orange-500{{else}}bg-blue-500{{end}} text-white px-3 py-1 rounded text-sm font-medium hover:opacity-80 transition-opacity">
+                        {{if .UseImperial}}Imperial{{else}}Metric{{end}}
+                    </button>
+                </div>
+                <a href="/" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition duration-200">
+                    Back to Home
+                </a>
+            </div>
         </div>
 
         <!-- Overall Stats -->
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
             <div class="bg-white rounded-lg shadow-md p-6">
                 <h3 class="text-lg font-semibold text-gray-900 mb-2">Total Distance</h3>
-                <p class="text-3xl font-bold text-blue-600">{{printf "%.1f" (div .TotalDistance 1000)}} km</p>
+                <p class="text-3xl font-bold text-blue-600">
+                    {{if .UseImperial}}{{printf "%.1f" (metersToMiles .TotalDistance)}} mi{{else}}{{printf "%.1f" (metersToKm .TotalDistance)}} km{{end}}
+                </p>
                 <p class="text-sm text-gray-600">All time</p>
             </div>
             <div class="bg-white rounded-lg shadow-md p-6">
@@ -720,6 +896,18 @@ func (h *Handlers) Stats(w http.ResponseWriter, r *http.Request) {
                 }
             }
         });
+
+        // Unit toggle functionality
+        document.getElementById('unit-toggle').addEventListener('click', function() {
+            const currentUnit = this.textContent.trim();
+            const newUnit = currentUnit === 'Metric' ? 'imperial' : 'metric';
+            
+            // Set cookie
+            document.cookie = 'units=' + newUnit + '; path=/; max-age=' + (365 * 24 * 60 * 60);
+            
+            // Reload page to apply new units
+            window.location.reload();
+        });
     </script>
 </body>
 </html>`
@@ -731,6 +919,7 @@ func (h *Handlers) Stats(w http.ResponseWriter, r *http.Request) {
 		Last7Days:       last7Days,
 		Last30Days:      last30Days,
 		WeeklyStats:     weeklyStats,
+		UseImperial:     useImperial,
 	}
 
 	funcMap := template.FuncMap{
@@ -739,6 +928,12 @@ func (h *Handlers) Stats(w http.ResponseWriter, r *http.Request) {
 				return 0
 			}
 			return a / b
+		},
+		"metersToKm": func(meters float64) float64 {
+			return meters / 1000
+		},
+		"metersToMiles": func(meters float64) float64 {
+			return meters * 0.000621371
 		},
 	}
 
@@ -775,6 +970,7 @@ type StatsData struct {
 	Last7Days       []ActivityStat
 	Last30Days      []ActivityStat
 	WeeklyStats     []WeekStat
+	UseImperial     bool
 }
 
 func isSameDay(t1, t2 time.Time) bool {
@@ -1123,6 +1319,324 @@ func (h *Handlers) BulkUploadGPX(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html")
 	w.Write([]byte(html))
+}
+
+func (h *Handlers) ActivityDetail(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Extract activity ID from URL path
+	path := r.URL.Path
+	activityID := strings.TrimPrefix(path, "/activity/")
+	
+	if activityID == "" {
+		http.Error(w, "Activity ID required", http.StatusBadRequest)
+		return
+	}
+
+	// Get all activities and find the specific one
+	activities, err := h.storage.GetActivities()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	var activity *models.Activity
+	for _, a := range activities {
+		if a.ID == activityID {
+			activity = a
+			break
+		}
+	}
+
+	if activity == nil {
+		http.Error(w, "Activity not found", http.StatusNotFound)
+		return
+	}
+
+	// Get unit preference from cookie
+	useImperial := false
+	if cookie, err := r.Cookie("units"); err == nil && cookie.Value == "imperial" {
+		useImperial = true
+	}
+
+	tmpl := `
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{{.Activity.Name}} - Health Hub</title>
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto px-4 py-8 max-w-6xl">
+        <!-- Header -->
+        <div class="flex justify-between items-center mb-8">
+            <div>
+                <h1 class="text-4xl font-bold text-gray-900 mb-2">{{.Activity.Name}}</h1>
+                <p class="text-gray-600">Activity Details</p>
+            </div>
+            <div class="flex items-center space-x-4">
+                <!-- Unit Toggle -->
+                <div class="flex items-center space-x-2">
+                    <span class="text-sm text-gray-600">Units:</span>
+                    <button id="unit-toggle" class="{{if .UseImperial}}bg-orange-500{{else}}bg-blue-500{{end}} text-white px-3 py-1 rounded text-sm font-medium hover:opacity-80 transition-opacity">
+                        {{if .UseImperial}}Imperial{{else}}Metric{{end}}
+                    </button>
+                </div>
+                <a href="/activities" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition duration-200">
+                    Back to Activities
+                </a>
+            </div>
+        </div>
+
+        <!-- Activity Overview -->
+        <div class="bg-white rounded-lg shadow-md p-8 mb-8">
+            <div class="flex items-center mb-6">
+                <div class="flex-shrink-0 h-16 w-16 mr-6">
+                    <div class="h-16 w-16 rounded-full bg-{{getTypeColor .Activity.Type}}-100 flex items-center justify-center">
+                        <span class="text-{{getTypeColor .Activity.Type}}-600 font-medium text-2xl">{{getTypeIcon .Activity.Type}}</span>
+                    </div>
+                </div>
+                <div>
+                    <h2 class="text-2xl font-bold text-gray-900">{{.Activity.Name}}</h2>
+                    <div class="flex items-center space-x-4 mt-2">
+                        <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-{{getTypeColor .Activity.Type}}-100 text-{{getTypeColor .Activity.Type}}-800">
+                            {{.Activity.Type}}
+                        </span>
+                        {{if .Activity.GPXFile}}
+                        <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
+                            📍 GPS Track
+                        </span>
+                        {{end}}
+                        <span class="text-gray-500 text-sm">{{.Activity.StartTime.Format "Monday, January 2, 2006 at 3:04 PM"}}</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Main Stats Grid -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-6 mb-8">
+                <div class="text-center">
+                    <div class="text-3xl font-bold text-blue-600">
+                        {{if .UseImperial}}{{printf "%.1f" (metersToMiles .Activity.Distance)}}{{else}}{{printf "%.1f" (metersToKm .Activity.Distance)}}{{end}}
+                    </div>
+                    <div class="text-sm text-gray-500 uppercase tracking-wide">
+                        {{if .UseImperial}}Miles{{else}}Kilometers{{end}}
+                    </div>
+                </div>
+                <div class="text-center">
+                    <div class="text-3xl font-bold text-green-600">{{formatDuration .Activity.Duration}}</div>
+                    <div class="text-sm text-gray-500 uppercase tracking-wide">Duration</div>
+                </div>
+                <div class="text-center">
+                    <div class="text-3xl font-bold text-purple-600">
+                        {{if .UseImperial}}{{printf "%.1f" (kmhToMph .Activity.AvgSpeed)}}{{else}}{{printf "%.1f" .Activity.AvgSpeed}}{{end}}
+                    </div>
+                    <div class="text-sm text-gray-500 uppercase tracking-wide">
+                        Avg {{if .UseImperial}}mph{{else}}km/h{{end}}
+                    </div>
+                </div>
+                <div class="text-center">
+                    <div class="text-3xl font-bold text-orange-600">
+                        {{if .UseImperial}}{{printf "%.0f" (metersToFeet .Activity.TotalElevation)}}{{else}}{{printf "%.0f" .Activity.TotalElevation}}{{end}}
+                    </div>
+                    <div class="text-sm text-gray-500 uppercase tracking-wide">
+                        {{if .UseImperial}}Feet{{else}}Meters{{end}} Elevation
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Detailed Stats -->
+        <div class="grid md:grid-cols-2 gap-8">
+            <!-- Performance Stats -->
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <h3 class="text-xl font-bold text-gray-900 mb-6">Performance</h3>
+                <div class="space-y-4">
+                    <div class="flex justify-between items-center py-3 border-b border-gray-100">
+                        <span class="text-gray-600">Average Speed</span>
+                        <span class="font-semibold">
+                            {{if .UseImperial}}{{printf "%.1f" (kmhToMph .Activity.AvgSpeed)}} mph{{else}}{{printf "%.1f" .Activity.AvgSpeed}} km/h{{end}}
+                        </span>
+                    </div>
+                    <div class="flex justify-between items-center py-3 border-b border-gray-100">
+                        <span class="text-gray-600">Max Speed</span>
+                        <span class="font-semibold">
+                            {{if .UseImperial}}{{printf "%.1f" (kmhToMph .Activity.MaxSpeed)}} mph{{else}}{{printf "%.1f" .Activity.MaxSpeed}} km/h{{end}}
+                        </span>
+                    </div>
+                    <div class="flex justify-between items-center py-3 border-b border-gray-100">
+                        <span class="text-gray-600">Average Pace</span>
+                        <span class="font-semibold">{{calculatePace .Activity.Duration .Activity.Distance .UseImperial}}</span>
+                    </div>
+                    {{if .Activity.Calories}}
+                    <div class="flex justify-between items-center py-3 border-b border-gray-100">
+                        <span class="text-gray-600">Calories</span>
+                        <span class="font-semibold">{{.Activity.Calories}} cal</span>
+                    </div>
+                    {{end}}
+                </div>
+            </div>
+
+            <!-- Activity Details -->
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <h3 class="text-xl font-bold text-gray-900 mb-6">Details</h3>
+                <div class="space-y-4">
+                    <div class="flex justify-between items-center py-3 border-b border-gray-100">
+                        <span class="text-gray-600">Start Time</span>
+                        <span class="font-semibold">{{.Activity.StartTime.Format "3:04 PM"}}</span>
+                    </div>
+                    <div class="flex justify-between items-center py-3 border-b border-gray-100">
+                        <span class="text-gray-600">End Time</span>
+                        <span class="font-semibold">{{.Activity.EndTime.Format "3:04 PM"}}</span>
+                    </div>
+                    <div class="flex justify-between items-center py-3 border-b border-gray-100">
+                        <span class="text-gray-600">Total Distance</span>
+                        <span class="font-semibold">
+                            {{if .UseImperial}}{{printf "%.2f" (metersToMiles .Activity.Distance)}} miles{{else}}{{printf "%.2f" (metersToKm .Activity.Distance)}} km{{end}}
+                        </span>
+                    </div>
+                    <div class="flex justify-between items-center py-3 border-b border-gray-100">
+                        <span class="text-gray-600">Elevation Gain</span>
+                        <span class="font-semibold">
+                            {{if .UseImperial}}{{printf "%.0f" (metersToFeet .Activity.TotalElevation)}} ft{{else}}{{printf "%.0f" .Activity.TotalElevation}} m{{end}}
+                        </span>
+                    </div>
+                    {{if .Activity.TotalPoints}}
+                    <div class="flex justify-between items-center py-3 border-b border-gray-100">
+                        <span class="text-gray-600">GPS Points</span>
+                        <span class="font-semibold">{{.Activity.TotalPoints}}</span>
+                    </div>
+                    {{end}}
+                </div>
+            </div>
+        </div>
+
+        <!-- Activity Actions -->
+        <div class="bg-white rounded-lg shadow-md p-6 mt-8">
+            <h3 class="text-xl font-bold text-gray-900 mb-4">Actions</h3>
+            <div class="flex space-x-4">
+                <a href="/activities" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition duration-200">
+                    ← Back to Activities
+                </a>
+                {{if .Activity.GPXFile}}
+                <button class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded transition duration-200">
+                    📍 View GPS Track
+                </button>
+                {{end}}
+                <a href="/stats" class="bg-purple-500 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded transition duration-200">
+                    📊 View Stats
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Unit toggle functionality
+        document.getElementById('unit-toggle').addEventListener('click', function() {
+            const currentUnit = this.textContent.trim();
+            const newUnit = currentUnit === 'Metric' ? 'imperial' : 'metric';
+            
+            // Set cookie
+            document.cookie = 'units=' + newUnit + '; path=/; max-age=' + (365 * 24 * 60 * 60);
+            
+            // Reload page to apply new units
+            window.location.reload();
+        });
+    </script>
+</body>
+</html>`
+
+	funcMap := template.FuncMap{
+		"metersToKm": func(meters float64) float64 {
+			return meters / 1000
+		},
+		"metersToMiles": func(meters float64) float64 {
+			return meters * 0.000621371
+		},
+		"metersToFeet": func(meters float64) float64 {
+			return meters * 3.28084
+		},
+		"kmhToMph": func(kmh float64) float64 {
+			return kmh * 0.621371
+		},
+		"formatDuration": func(seconds int) string {
+			hours := seconds / 3600
+			minutes := (seconds % 3600) / 60
+			if hours > 0 {
+				return fmt.Sprintf("%d:%02d:%02d", hours, minutes, seconds%60)
+			}
+			return fmt.Sprintf("%d:%02d", minutes, seconds%60)
+		},
+		"calculatePace": func(durationSeconds int, distanceMeters float64, useImperial bool) string {
+			if distanceMeters == 0 {
+				return "N/A"
+			}
+			
+			var distance float64
+			var unit string
+			
+			if useImperial {
+				distance = distanceMeters * 0.000621371 // to miles
+				unit = "/mi"
+			} else {
+				distance = distanceMeters / 1000 // to km
+				unit = "/km"
+			}
+			
+			paceSeconds := float64(durationSeconds) / distance
+			paceMinutes := int(paceSeconds) / 60
+			paceSecondsRemainder := int(paceSeconds) % 60
+			
+			return fmt.Sprintf("%d:%02d%s", paceMinutes, paceSecondsRemainder, unit)
+		},
+		"getTypeColor": func(activityType string) string {
+			switch strings.ToLower(activityType) {
+			case "running":
+				return "red"
+			case "cycling":
+				return "blue"
+			case "walking":
+				return "green"
+			case "hiking":
+				return "yellow"
+			default:
+				return "gray"
+			}
+		},
+		"getTypeIcon": func(activityType string) string {
+			switch strings.ToLower(activityType) {
+			case "running":
+				return "🏃"
+			case "cycling":
+				return "🚴"
+			case "walking":
+				return "🚶"
+			case "hiking":
+				return "🥾"
+			default:
+				return "🏃"
+			}
+		},
+	}
+
+	data := struct {
+		Activity    *models.Activity
+		UseImperial bool
+	}{
+		Activity:    activity,
+		UseImperial: useImperial,
+	}
+
+	t, err := template.New("activity-detail").Funcs(funcMap).Parse(tmpl)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	t.Execute(w, data)
 }
 
 // Helper type for bulk upload results
