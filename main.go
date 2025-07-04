@@ -48,6 +48,7 @@ func main() {
 	mux.HandleFunc("/stats", h.Stats)
 	mux.HandleFunc("/bulk-upload", h.BulkUpload)
 	mux.HandleFunc("/activity/", h.ActivityDetail)
+	mux.HandleFunc("/gps-track/", h.GPSTrack)
 	mux.HandleFunc("/api/activities", h.GetActivities)
 	mux.HandleFunc("/api/health", h.GetHealthMetrics)
 	mux.HandleFunc("/api/upload/gpx", h.UploadGPX)

@@ -1522,9 +1522,9 @@ func (h *Handlers) ActivityDetail(w http.ResponseWriter, r *http.Request) {
                     ← Back to Activities
                 </a>
                 {{if .Activity.GPXFile}}
-                <button class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded transition duration-200">
+                <a href="/gps-track/{{.Activity.ID}}" class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded transition duration-200">
                     📍 View GPS Track
-                </button>
+                </a>
                 {{end}}
                 <a href="/stats" class="bg-purple-500 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded transition duration-200">
                     📊 View Stats
@@ -1631,6 +1631,402 @@ func (h *Handlers) ActivityDetail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	t, err := template.New("activity-detail").Funcs(funcMap).Parse(tmpl)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	t.Execute(w, data)
+}
+
+func (h *Handlers) GPSTrack(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Extract activity ID from URL path
+	path := r.URL.Path
+	activityID := strings.TrimPrefix(path, "/gps-track/")
+	
+	if activityID == "" {
+		http.Error(w, "Activity ID required", http.StatusBadRequest)
+		return
+	}
+
+	// Get activity
+	activities, err := h.storage.GetActivities()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	var activity *models.Activity
+	for _, a := range activities {
+		if a.ID == activityID {
+			activity = a
+			break
+		}
+	}
+
+	if activity == nil {
+		http.Error(w, "Activity not found", http.StatusNotFound)
+		return
+	}
+
+	if activity.GPXFile == "" {
+		http.Error(w, "No GPS track available for this activity", http.StatusNotFound)
+		return
+	}
+
+	// Get GPX track data
+	gpxTracks, err := h.storage.GetGPXTracks()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	var track *models.GPXTrack
+	for _, t := range gpxTracks {
+		if t.ID == activity.ID { // GPX tracks use the same ID as activities
+			track = t
+			break
+		}
+	}
+
+	if track == nil {
+		http.Error(w, "GPS track data not found", http.StatusNotFound)
+		return
+	}
+
+	// Get unit preference
+	useImperial := false
+	if cookie, err := r.Cookie("units"); err == nil && cookie.Value == "imperial" {
+		useImperial = true
+	}
+
+	tmpl := `
+<!DOCTYPE html>
+<html>
+<head>
+    <title>GPS Track - {{.Activity.Name}} - Health Hub</title>
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto px-4 py-8 max-w-7xl">
+        <!-- Header -->
+        <div class="flex justify-between items-center mb-8">
+            <div>
+                <h1 class="text-4xl font-bold text-gray-900 mb-2">GPS Track</h1>
+                <p class="text-gray-600">{{.Activity.Name}} - {{.Activity.StartTime.Format "Jan 2, 2006"}}</p>
+            </div>
+            <div class="flex items-center space-x-4">
+                <!-- Unit Toggle -->
+                <div class="flex items-center space-x-2">
+                    <span class="text-sm text-gray-600">Units:</span>
+                    <button id="unit-toggle" class="{{if .UseImperial}}bg-orange-500{{else}}bg-blue-500{{end}} text-white px-3 py-1 rounded text-sm font-medium hover:opacity-80 transition-opacity">
+                        {{if .UseImperial}}Imperial{{else}}Metric{{end}}
+                    </button>
+                </div>
+                <a href="/activity/{{.Activity.ID}}" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition duration-200">
+                    Back to Activity
+                </a>
+            </div>
+        </div>
+
+        <!-- Quick Stats -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <div class="bg-white rounded-lg shadow-md p-4 text-center">
+                <div class="text-2xl font-bold text-blue-600">
+                    {{if .UseImperial}}{{printf "%.1f" (metersToMiles .Activity.Distance)}}{{else}}{{printf "%.1f" (metersToKm .Activity.Distance)}}{{end}}
+                </div>
+                <div class="text-sm text-gray-500">{{if .UseImperial}}Miles{{else}}Kilometers{{end}}</div>
+            </div>
+            <div class="bg-white rounded-lg shadow-md p-4 text-center">
+                <div class="text-2xl font-bold text-green-600">{{formatDuration .Activity.Duration}}</div>
+                <div class="text-sm text-gray-500">Duration</div>
+            </div>
+            <div class="bg-white rounded-lg shadow-md p-4 text-center">
+                <div class="text-2xl font-bold text-purple-600">
+                    {{if .UseImperial}}{{printf "%.1f" (kmhToMph .Activity.AvgSpeed)}}{{else}}{{printf "%.1f" .Activity.AvgSpeed}}{{end}}
+                </div>
+                <div class="text-sm text-gray-500">Avg {{if .UseImperial}}mph{{else}}km/h{{end}}</div>
+            </div>
+            <div class="bg-white rounded-lg shadow-md p-4 text-center">
+                <div class="text-2xl font-bold text-orange-600">{{.Track.TotalPoints}}</div>
+                <div class="text-sm text-gray-500">GPS Points</div>
+            </div>
+        </div>
+
+        <!-- Map Container -->
+        <div class="bg-white rounded-lg shadow-md overflow-hidden mb-6">
+            <div class="p-4 border-b border-gray-200">
+                <h3 class="text-lg font-semibold text-gray-900">GPS Track Map</h3>
+                <p class="text-sm text-gray-600">Interactive map showing your route</p>
+            </div>
+            <div id="map" style="height: 500px; width: 100%;"></div>
+        </div>
+
+        <!-- Elevation Profile -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">Elevation Profile</h3>
+            <canvas id="elevationChart" width="800" height="200"></canvas>
+        </div>
+
+        <!-- Track Statistics -->
+        <div class="grid md:grid-cols-2 gap-6">
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">Track Details</h3>
+                <div class="space-y-3">
+                    <div class="flex justify-between">
+                        <span class="text-gray-600">Total Points:</span>
+                        <span class="font-semibold">{{.Track.TotalPoints}}</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-gray-600">Start Point:</span>
+                        <span class="font-semibold">{{printf "%.6f, %.6f" .Track.StartLat .Track.StartLon}}</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-gray-600">End Point:</span>
+                        <span class="font-semibold">{{printf "%.6f, %.6f" .Track.EndLat .Track.EndLon}}</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-gray-600">Min Elevation:</span>
+                        <span class="font-semibold">
+                            {{if .UseImperial}}{{printf "%.0f ft" (metersToFeet .Track.MinElevation)}}{{else}}{{printf "%.0f m" .Track.MinElevation}}{{end}}
+                        </span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-gray-600">Max Elevation:</span>
+                        <span class="font-semibold">
+                            {{if .UseImperial}}{{printf "%.0f ft" (metersToFeet .Track.MaxElevation)}}{{else}}{{printf "%.0f m" .Track.MaxElevation}}{{end}}
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">Activity Info</h3>
+                <div class="space-y-3">
+                    <div class="flex justify-between">
+                        <span class="text-gray-600">Activity Type:</span>
+                        <span class="font-semibold">{{.Activity.Type}}</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-gray-600">Start Time:</span>
+                        <span class="font-semibold">{{.Activity.StartTime.Format "3:04 PM"}}</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-gray-600">End Time:</span>
+                        <span class="font-semibold">{{.Activity.EndTime.Format "3:04 PM"}}</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-gray-600">Max Speed:</span>
+                        <span class="font-semibold">
+                            {{if .UseImperial}}{{printf "%.1f mph" (kmhToMph .Activity.MaxSpeed)}}{{else}}{{printf "%.1f km/h" .Activity.MaxSpeed}}{{end}}
+                        </span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-gray-600">Total Elevation:</span>
+                        <span class="font-semibold">
+                            {{if .UseImperial}}{{printf "%.0f ft" (metersToFeet .Activity.TotalElevation)}}{{else}}{{printf "%.0f m" .Activity.TotalElevation}}{{end}}
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Unit toggle functionality
+        document.getElementById('unit-toggle').addEventListener('click', function() {
+            const currentUnit = this.textContent.trim();
+            const newUnit = currentUnit === 'Metric' ? 'imperial' : 'metric';
+            
+            // Set cookie
+            document.cookie = 'units=' + newUnit + '; path=/; max-age=' + (365 * 24 * 60 * 60);
+            
+            // Reload page to apply new units
+            window.location.reload();
+        });
+
+        // Initialize map
+        const map = L.map('map');
+
+        // Add OpenStreetMap tiles
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        // GPS track data
+        const trackPoints = [
+            {{range .Track.Points}}
+            [{{.Lat}}, {{.Lon}}, {{.Elevation}}],
+            {{end}}
+        ];
+
+        if (trackPoints.length > 0) {
+            // Create polyline for the track
+            const track = L.polyline(trackPoints.map(p => [p[0], p[1]]), {
+                color: '#3B82F6',
+                weight: 4,
+                opacity: 0.8
+            }).addTo(map);
+
+            // Add start marker
+            L.marker([trackPoints[0][0], trackPoints[0][1]], {
+                icon: L.divIcon({
+                    className: 'custom-div-icon',
+                    html: '<div style="background-color: #10B981; color: white; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 12px;">S</div>',
+                    iconSize: [20, 20],
+                    iconAnchor: [10, 10]
+                })
+            }).addTo(map).bindPopup('Start');
+
+            // Add end marker
+            const lastPoint = trackPoints[trackPoints.length - 1];
+            L.marker([lastPoint[0], lastPoint[1]], {
+                icon: L.divIcon({
+                    className: 'custom-div-icon',
+                    html: '<div style="background-color: #EF4444; color: white; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 12px;">F</div>',
+                    iconSize: [20, 20],
+                    iconAnchor: [10, 10]
+                })
+            }).addTo(map).bindPopup('Finish');
+
+            // Fit map to track bounds
+            map.fitBounds(track.getBounds(), { padding: [20, 20] });
+
+            // Create elevation profile
+            const elevationData = trackPoints.map((point, index) => ({
+                x: index,
+                y: {{if .UseImperial}}point[2] * 3.28084{{else}}point[2]{{end}} // Convert to feet if imperial
+            }));
+
+            // Simple elevation chart using canvas
+            const canvas = document.getElementById('elevationChart');
+            const ctx = canvas.getContext('2d');
+            const width = canvas.width;
+            const height = canvas.height;
+
+            if (elevationData.length > 1) {
+                const minElevation = Math.min(...elevationData.map(d => d.y));
+                const maxElevation = Math.max(...elevationData.map(d => d.y));
+                const elevationRange = maxElevation - minElevation;
+
+                // Clear canvas
+                ctx.clearRect(0, 0, width, height);
+
+                // Draw grid
+                ctx.strokeStyle = '#E5E7EB';
+                ctx.lineWidth = 1;
+                for (let i = 0; i <= 10; i++) {
+                    const y = (height - 40) * (i / 10) + 20;
+                    ctx.beginPath();
+                    ctx.moveTo(40, y);
+                    ctx.lineTo(width - 20, y);
+                    ctx.stroke();
+                }
+
+                // Draw elevation line
+                ctx.strokeStyle = '#8B5CF6';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+
+                elevationData.forEach((point, index) => {
+                    const x = 40 + (width - 60) * (index / (elevationData.length - 1));
+                    const y = height - 20 - ((point.y - minElevation) / elevationRange) * (height - 40);
+                    
+                    if (index === 0) {
+                        ctx.moveTo(x, y);
+                    } else {
+                        ctx.lineTo(x, y);
+                    }
+                });
+                ctx.stroke();
+
+                // Draw labels
+                ctx.fillStyle = '#374151';
+                ctx.font = '12px Arial';
+                ctx.fillText('{{if .UseImperial}}Elevation (ft){{else}}Elevation (m){{end}}', 10, 15);
+                ctx.fillText(minElevation.toFixed(0), 45, height - 5);
+                ctx.fillText(maxElevation.toFixed(0), 45, 25);
+            } else {
+                ctx.fillStyle = '#9CA3AF';
+                ctx.font = '14px Arial';
+                ctx.fillText('No elevation data available', width / 2 - 80, height / 2);
+            }
+        } else {
+            // No track data
+            map.setView([0, 0], 2);
+            L.marker([0, 0]).addTo(map).bindPopup('No GPS data available');
+        }
+    </script>
+</body>
+</html>`
+
+	// Enhance track data with statistics
+	enhancedTrack := *track
+	if len(track.Points) > 0 {
+		enhancedTrack.StartLat = track.Points[0].Lat
+		enhancedTrack.StartLon = track.Points[0].Lon
+		enhancedTrack.EndLat = track.Points[len(track.Points)-1].Lat
+		enhancedTrack.EndLon = track.Points[len(track.Points)-1].Lon
+		enhancedTrack.TotalPoints = len(track.Points)
+		
+		// Calculate min/max elevation
+		if len(track.Points) > 0 {
+			minElev, maxElev := track.Points[0].Elevation, track.Points[0].Elevation
+			for _, point := range track.Points {
+				if point.Elevation < minElev {
+					minElev = point.Elevation
+				}
+				if point.Elevation > maxElev {
+					maxElev = point.Elevation
+				}
+			}
+			enhancedTrack.MinElevation = minElev
+			enhancedTrack.MaxElevation = maxElev
+		}
+	}
+
+	funcMap := template.FuncMap{
+		"metersToKm": func(meters float64) float64 {
+			return meters / 1000
+		},
+		"metersToMiles": func(meters float64) float64 {
+			return meters * 0.000621371
+		},
+		"metersToFeet": func(meters float64) float64 {
+			return meters * 3.28084
+		},
+		"kmhToMph": func(kmh float64) float64 {
+			return kmh * 0.621371
+		},
+		"formatDuration": func(seconds int) string {
+			hours := seconds / 3600
+			minutes := (seconds % 3600) / 60
+			if hours > 0 {
+				return fmt.Sprintf("%d:%02d:%02d", hours, minutes, seconds%60)
+			}
+			return fmt.Sprintf("%d:%02d", minutes, seconds%60)
+		},
+	}
+
+	data := struct {
+		Activity    *models.Activity
+		Track       *models.GPXTrack
+		UseImperial bool
+	}{
+		Activity:    activity,
+		Track:       &enhancedTrack,
+		UseImperial: useImperial,
+	}
+
+	t, err := template.New("gps-track").Funcs(funcMap).Parse(tmpl)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

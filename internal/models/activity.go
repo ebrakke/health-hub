@@ -20,10 +20,17 @@ type Activity struct {
 }
 
 type GPXTrack struct {
-	ID        string      `json:"id"`
-	Name      string      `json:"name"`
-	Points    []GPXPoint  `json:"points"`
-	CreatedAt time.Time   `json:"created_at"`
+	ID           string      `json:"id"`
+	Name         string      `json:"name"`
+	Points       []GPXPoint  `json:"points"`
+	CreatedAt    time.Time   `json:"created_at"`
+	StartLat     float64     `json:"start_lat,omitempty"`
+	StartLon     float64     `json:"start_lon,omitempty"`
+	EndLat       float64     `json:"end_lat,omitempty"`
+	EndLon       float64     `json:"end_lon,omitempty"`
+	TotalPoints  int         `json:"total_points,omitempty"`
+	MinElevation float64     `json:"min_elevation,omitempty"`
+	MaxElevation float64     `json:"max_elevation,omitempty"`
 }
 
 type GPXPoint struct {
