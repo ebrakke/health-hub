@@ -132,14 +132,108 @@ Environment variables:
 - Static file serving from `./static/` directory (if needed)
 - No authentication system currently implemented
 
+## Git Workflow & Commit Guidelines
+
+### Commit Message Format
+Use structured commit messages that clearly describe the change and its impact:
+
+```
+<type>: <short description>
+
+<detailed description>
+- Bullet points for key changes
+- Include technical details
+- Reference related issues or features
+
+🤖 Generated with [Claude Code](https://claude.ai/code)
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+```
+
+### Commit Types
+- **feat**: New feature or significant enhancement
+- **fix**: Bug fixes
+- **refactor**: Code restructuring without behavior change
+- **style**: UI/UX improvements, styling changes
+- **perf**: Performance improvements
+- **docs**: Documentation updates
+- **build**: Build system, dependencies, or tooling changes
+- **test**: Adding or updating tests
+
+### Major Change Guidelines
+For substantial changes that modify multiple files or add significant functionality:
+
+1. **Create descriptive commits** with comprehensive messages
+2. **Include feature lists** with emoji indicators for visual clarity
+3. **Document technical stack** changes and architectural decisions
+4. **Reference breaking changes** and migration notes
+5. **Add co-authoring** attribution for AI-assisted development
+
+### Examples of Good Commit Messages
+
+```
+feat: Add comprehensive stats dashboard with trend analysis
+
+Features implemented:
+- 📈 Chart.js integration for interactive visualizations
+- 📊 7-day, 30-day, and weekly trend calculations
+- 🎨 Responsive design with Tailwind CSS
+- 🔄 Real-time data aggregation and filtering
+- 📱 Mobile-optimized chart layouts
+
+Technical changes:
+- Added Chart.js CDN integration
+- Implemented time-based activity aggregation
+- Created new /stats route and handler
+- Added helper functions for date calculations
+- Updated navigation with stats page links
+
+🤖 Generated with [Claude Code](https://claude.ai/code)
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+```
+
+```
+refactor: Migrate homepage from vanilla JS to HTMX
+
+Breaking changes:
+- Replaced custom CSS with Tailwind utility classes
+- Converted forms to use HTMX attributes
+- Updated API endpoints to return HTML fragments
+- Removed vanilla JavaScript event handlers
+
+Benefits:
+- ⚡ Faster page loads with HTMX
+- 🎨 Consistent styling with Tailwind
+- 🔄 Better user feedback with HTML responses
+- 📱 Improved mobile responsiveness
+
+🤖 Generated with [Claude Code](https://claude.ai/code)
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+```
+
+### When to Commit
+- **After completing a logical unit of work** (feature, fix, refactor)
+- **Before switching contexts** or starting new features
+- **When tests pass** and code builds successfully
+- **After major architectural changes** are complete and tested
+- **When adding new dependencies** or changing build configuration
+
+### Pre-Commit Checklist
+Before committing, ensure:
+- [ ] Code builds without errors (`make build`)
+- [ ] Application runs correctly (`make run` or `make dev`)
+- [ ] All new features have been manually tested
+- [ ] Commit message follows the established format
+- [ ] No sensitive data (API keys, passwords) is included
+- [ ] Generated files are in .gitignore if appropriate
+
 ## Frontend Migration Notes
 
 Current implementation uses:
-- Custom CSS in embedded templates
-- Vanilla JavaScript for form handling and AJAX
-- Manual DOM manipulation for stats loading
-
-Should be converted to:
-- Tailwind utility classes for all styling
-- HTMX attributes for all interactivity
-- Server-side HTML fragment responses for dynamic content
+- HTMX for all interactive elements and form handling
+- Tailwind CSS for responsive, utility-first styling
+- Server-side HTML fragments for dynamic content updates
+- Chart.js for data visualization and trend analysis
+- Template-driven UI with embedded HTML in Go handlers
