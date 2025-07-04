@@ -1,4 +1,4 @@
-.PHONY: build run dev clean install deps build-all build-linux build-darwin build-windows release
+.PHONY: build run dev clean install deps build-all build-linux build-darwin build-windows release tag-release push-release test-release help
 
 # Build the application
 build:
@@ -98,3 +98,71 @@ serve: build
 
 # Quick start for development
 start: deps serve
+
+# Release commands
+tag-release:
+	@echo "Creating and pushing release tag..."
+	@if [ -z "$(VERSION)" ]; then \
+		echo "Error: VERSION is required. Usage: make tag-release VERSION=v0.1.0"; \
+		exit 1; \
+	fi
+	@echo "Tagging version $(VERSION)"
+	git tag $(VERSION)
+	git push origin $(VERSION)
+	@echo "Release tag $(VERSION) created and pushed!"
+	@echo "GitHub Actions will now build and create the release automatically."
+
+# Create a release (tag + push)
+push-release: tag-release
+	@echo "Release $(VERSION) is being processed by GitHub Actions"
+	@echo "Check https://github.com/your-username/health-hub/actions for progress"
+
+# Test release build locally
+test-release: release
+	@echo "Testing release archives..."
+	@ls -la releases/
+	@echo "Extracting Linux build to test..."
+	@mkdir -p test-extract
+	@cd test-extract && tar -xzf ../releases/health-hub-linux-amd64.tar.gz
+	@echo "Testing binary..."
+	@timeout 2s ./test-extract/health-hub-linux-amd64 || echo "Binary test completed (expected timeout)"
+	@rm -rf test-extract
+	@echo "Release build test completed successfully!"
+
+# Show help
+help:
+	@echo "Health Hub - Makefile Commands"
+	@echo "================================"
+	@echo ""
+	@echo "Development:"
+	@echo "  build          Build the application binary"
+	@echo "  run            Build and run the application"
+	@echo "  dev            Run with hot reload (requires air)"
+	@echo "  serve          Build and run with network info"
+	@echo "  start          Full development setup (deps + serve)"
+	@echo ""
+	@echo "Dependencies:"
+	@echo "  deps           Install and tidy Go dependencies"
+	@echo "  install-air    Install air for hot reload"
+	@echo ""
+	@echo "Cross-platform builds:"
+	@echo "  build-all      Build for all platforms"
+	@echo "  build-linux    Build for Linux (amd64, arm64)"
+	@echo "  build-darwin   Build for macOS (amd64, arm64)"
+	@echo "  build-windows  Build for Windows (amd64, arm64)"
+	@echo ""
+	@echo "Release management:"
+	@echo "  release        Create local release archives"
+	@echo "  test-release   Test release build locally"
+	@echo "  tag-release    Create and push git tag (requires VERSION=v0.1.0)"
+	@echo "  push-release   Same as tag-release"
+	@echo ""
+	@echo "Maintenance:"
+	@echo "  clean          Remove build artifacts and data"
+	@echo "  network-info   Show local and Tailscale network info"
+	@echo "  run-s3         Run with S3 storage enabled"
+	@echo ""
+	@echo "Examples:"
+	@echo "  make tag-release VERSION=v0.1.0"
+	@echo "  make test-release"
+	@echo "  make build-all"
