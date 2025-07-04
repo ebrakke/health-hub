@@ -46,10 +46,12 @@ func main() {
 	mux.HandleFunc("/upload", h.Upload)
 	mux.HandleFunc("/activities", h.Activities)
 	mux.HandleFunc("/stats", h.Stats)
+	mux.HandleFunc("/bulk-upload", h.BulkUpload)
 	mux.HandleFunc("/api/activities", h.GetActivities)
 	mux.HandleFunc("/api/health", h.GetHealthMetrics)
 	mux.HandleFunc("/api/upload/gpx", h.UploadGPX)
 	mux.HandleFunc("/api/upload/health", h.UploadHealthData)
+	mux.HandleFunc("/api/upload/bulk-gpx", h.BulkUploadGPX)
 	mux.HandleFunc("/api/stats/activities", h.StatsActivities)
 	mux.HandleFunc("/api/stats/health", h.StatsHealth)
 

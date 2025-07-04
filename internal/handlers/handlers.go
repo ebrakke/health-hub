@@ -94,7 +94,7 @@ func (h *Handlers) Home(w http.ResponseWriter, r *http.Request) {
             </div>
         </div>
 
-        <div class="bg-white rounded-lg shadow-md p-6">
+        <div class="bg-white rounded-lg shadow-md p-6 mb-8">
             <h2 class="text-2xl font-bold text-gray-900 mb-6">Explore Your Data</h2>
             <div class="grid md:grid-cols-2 gap-6">
                 <a href="/activities" class="block bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white p-6 rounded-lg transition duration-200 transform hover:scale-105">
@@ -105,6 +105,17 @@ func (h *Handlers) Home(w http.ResponseWriter, r *http.Request) {
                 <a href="/stats" class="block bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white p-6 rounded-lg transition duration-200 transform hover:scale-105">
                     <h3 class="text-xl font-semibold mb-2">📈 Stats & Trends</h3>
                     <p class="text-purple-100">Analyze your fitness progress with charts and weekly trends</p>
+                </a>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <h2 class="text-2xl font-bold text-gray-900 mb-6">Need to Upload Multiple Files?</h2>
+            <div class="text-center">
+                <a href="/bulk-upload" class="inline-block bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white p-6 rounded-lg transition duration-200 transform hover:scale-105">
+                    <h3 class="text-xl font-semibold mb-2">📁 Bulk Upload</h3>
+                    <p class="text-orange-100">Upload multiple GPX files at once with drag-and-drop support</p>
+                    <p class="text-orange-200 text-sm mt-2">Perfect for importing your historical activity data</p>
                 </a>
             </div>
         </div>
@@ -770,4 +781,358 @@ func isSameDay(t1, t2 time.Time) bool {
 	y1, m1, d1 := t1.Date()
 	y2, m2, d2 := t2.Date()
 	return y1 == y2 && m1 == m2 && d1 == d2
+}
+
+func (h *Handlers) BulkUpload(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	tmpl := `
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Bulk Upload - Health Hub</title>
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto px-4 py-8 max-w-4xl">
+        <!-- Header -->
+        <div class="flex justify-between items-center mb-8">
+            <div>
+                <h1 class="text-4xl font-bold text-gray-900 mb-2">Bulk Upload</h1>
+                <p class="text-gray-600">Upload multiple GPX files at once</p>
+            </div>
+            <a href="/" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition duration-200">
+                Back to Home
+            </a>
+        </div>
+
+        <!-- Upload Section -->
+        <div class="bg-white rounded-lg shadow-md p-8 mb-8">
+            <div class="text-center mb-8">
+                <div class="mx-auto w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-4">
+                    <svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                    </svg>
+                </div>
+                <h2 class="text-2xl font-bold text-gray-900 mb-2">Upload Your GPX Files</h2>
+                <p class="text-gray-600">Select multiple GPX files or drag and drop them here</p>
+            </div>
+
+            <!-- Drag and Drop Area -->
+            <div id="drop-zone" class="border-2 border-dashed border-blue-300 rounded-lg p-8 text-center hover:border-blue-400 transition-colors cursor-pointer">
+                <form id="bulk-upload-form" hx-post="/api/upload/bulk-gpx" hx-encoding="multipart/form-data" 
+                      hx-target="#upload-results" hx-swap="innerHTML" hx-indicator="#upload-progress">
+                    <input type="file" id="file-input" name="gpx-files" accept=".gpx" multiple required 
+                           class="hidden">
+                    <div id="file-list" class="mb-4 hidden">
+                        <h3 class="text-lg font-semibold text-gray-900 mb-2">Selected Files:</h3>
+                        <div id="selected-files" class="space-y-2"></div>
+                    </div>
+                    <div id="drop-text" class="mb-6">
+                        <p class="text-xl text-gray-600 mb-2">Drop GPX files here or</p>
+                        <button type="button" onclick="document.getElementById('file-input').click()" 
+                                class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg transition duration-200">
+                            Select Files
+                        </button>
+                    </div>
+                    <button type="submit" id="upload-btn" class="hidden bg-green-500 hover:bg-green-700 text-white font-bold py-3 px-8 rounded-lg transition duration-200">
+                        Upload All Files
+                    </button>
+                </form>
+            </div>
+
+            <!-- Progress Indicator -->
+            <div id="upload-progress" class="htmx-indicator mt-6">
+                <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <div class="flex items-center">
+                        <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mr-3"></div>
+                        <span class="text-blue-800 font-medium">Processing files...</span>
+                    </div>
+                    <div class="mt-2 bg-white rounded-full h-2">
+                        <div class="bg-blue-600 h-2 rounded-full animate-pulse" style="width: 45%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Upload Results -->
+        <div id="upload-results" class="space-y-4"></div>
+
+        <!-- Instructions -->
+        <div class="bg-blue-50 border border-blue-200 rounded-lg p-6">
+            <h3 class="text-lg font-semibold text-blue-900 mb-3">📋 Upload Instructions</h3>
+            <ul class="text-blue-800 space-y-2">
+                <li>• Select multiple GPX files (you can Ctrl+click or Cmd+click to select multiple files)</li>
+                <li>• Drag and drop files directly onto the upload area</li>
+                <li>• Each file will be processed individually with detailed progress</li>
+                <li>• Invalid files will be skipped with error messages</li>
+                <li>• Successfully uploaded activities will appear in your activity log</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+        const fileList = document.getElementById('file-list');
+        const selectedFiles = document.getElementById('selected-files');
+        const uploadBtn = document.getElementById('upload-btn');
+        const dropText = document.getElementById('drop-text');
+
+        // Drag and drop functionality
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('border-blue-500', 'bg-blue-50');
+        });
+
+        dropZone.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('border-blue-500', 'bg-blue-50');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('border-blue-500', 'bg-blue-50');
+            
+            const files = Array.from(e.dataTransfer.files).filter(file => 
+                file.name.toLowerCase().endsWith('.gpx')
+            );
+            
+            if (files.length > 0) {
+                // Create a new FileList-like object
+                const dt = new DataTransfer();
+                files.forEach(file => dt.items.add(file));
+                fileInput.files = dt.files;
+                updateFileList(files);
+            }
+        });
+
+        // File input change handler
+        fileInput.addEventListener('change', (e) => {
+            const files = Array.from(e.target.files);
+            updateFileList(files);
+        });
+
+        function updateFileList(files) {
+            if (files.length === 0) {
+                fileList.classList.add('hidden');
+                uploadBtn.classList.add('hidden');
+                dropText.classList.remove('hidden');
+                return;
+            }
+
+            selectedFiles.innerHTML = '';
+            files.forEach((file, index) => {
+                const fileItem = document.createElement('div');
+                fileItem.className = 'flex items-center justify-between bg-gray-50 p-3 rounded';
+                fileItem.innerHTML = 
+                    '<div class="flex items-center">' +
+                        '<svg class="w-5 h-5 text-green-600 mr-2" fill="currentColor" viewBox="0 0 20 20">' +
+                            '<path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd"></path>' +
+                        '</svg>' +
+                        '<span class="text-gray-700">' + file.name + '</span>' +
+                        '<span class="text-gray-500 text-sm ml-2">(' + (file.size / 1024).toFixed(1) + ' KB)</span>' +
+                    '</div>';
+                selectedFiles.appendChild(fileItem);
+            });
+
+            fileList.classList.remove('hidden');
+            uploadBtn.classList.remove('hidden');
+            dropText.classList.add('hidden');
+        }
+
+        // Click to select files
+        dropZone.addEventListener('click', (e) => {
+            if (e.target === dropZone || e.target.closest('#drop-text')) {
+                fileInput.click();
+            }
+        });
+    </script>
+</body>
+</html>`
+
+	t, _ := template.New("bulk-upload").Parse(tmpl)
+	t.Execute(w, nil)
+}
+
+func (h *Handlers) BulkUploadGPX(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Parse multipart form with larger memory limit for multiple files
+	err := r.ParseMultipartForm(100 << 20) // 100MB limit
+	if err != nil {
+		http.Error(w, "Error parsing form", http.StatusBadRequest)
+		return
+	}
+
+	files := r.MultipartForm.File["gpx-files"]
+	if len(files) == 0 {
+		http.Error(w, "No files selected", http.StatusBadRequest)
+		return
+	}
+
+	var results []BulkUploadResult
+	successCount := 0
+	errorCount := 0
+
+	for i, fileHeader := range files {
+		result := BulkUploadResult{
+			FileName: fileHeader.Filename,
+			Index:    i + 1,
+			Total:    len(files),
+		}
+
+		// Open the file
+		file, err := fileHeader.Open()
+		if err != nil {
+			result.Status = "error"
+			result.Error = "Failed to open file"
+			errorCount++
+			results = append(results, result)
+			continue
+		}
+
+		// Read file content
+		data, err := ioutil.ReadAll(file)
+		file.Close()
+		if err != nil {
+			result.Status = "error"
+			result.Error = "Failed to read file content"
+			errorCount++
+			results = append(results, result)
+			continue
+		}
+
+		// Save the raw GPX file
+		filename := fmt.Sprintf("gpx_%d_%s", time.Now().UnixNano(), fileHeader.Filename)
+		if err := h.storage.SaveFile(filename, data); err != nil {
+			result.Status = "error"
+			result.Error = "Failed to save file"
+			errorCount++
+			results = append(results, result)
+			continue
+		}
+
+		// Parse GPX and create activity record
+		track, activity, err := gpx.ParseGPX(string(data))
+		if err != nil {
+			result.Status = "error"
+			result.Error = fmt.Sprintf("Invalid GPX format: %v", err)
+			errorCount++
+			results = append(results, result)
+			continue
+		}
+
+		// Set additional activity details
+		if activity.Name == "" {
+			activity.Name = strings.TrimSuffix(fileHeader.Filename, ".gpx")
+		}
+		activity.GPXFile = filename
+
+		// Save track and activity
+		if err := h.storage.SaveGPXTrack(track); err != nil {
+			result.Status = "error"
+			result.Error = "Failed to save GPS track"
+			errorCount++
+			results = append(results, result)
+			continue
+		}
+
+		if err := h.storage.SaveActivity(activity); err != nil {
+			result.Status = "error"
+			result.Error = "Failed to save activity"
+			errorCount++
+			results = append(results, result)
+			continue
+		}
+
+		result.Status = "success"
+		result.ActivityName = activity.Name
+		result.Distance = activity.Distance / 1000 // Convert to km
+		result.Duration = activity.Duration
+		successCount++
+		results = append(results, result)
+	}
+
+	// Generate HTML response
+	html := fmt.Sprintf(`
+	<div class="bg-white rounded-lg shadow-md p-6">
+		<div class="flex items-center justify-between mb-6">
+			<h3 class="text-xl font-semibold text-gray-900">Upload Results</h3>
+			<div class="flex space-x-4">
+				<span class="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-medium">
+					✓ %d Successful
+				</span>
+				<span class="bg-red-100 text-red-800 px-3 py-1 rounded-full text-sm font-medium">
+					✗ %d Failed
+				</span>
+			</div>
+		</div>
+		<div class="space-y-3 max-h-96 overflow-y-auto">`, successCount, errorCount)
+
+	for _, result := range results {
+		if result.Status == "success" {
+			html += fmt.Sprintf(`
+			<div class="flex items-center justify-between bg-green-50 border border-green-200 rounded-lg p-4">
+				<div class="flex items-center">
+					<svg class="w-5 h-5 text-green-600 mr-3" fill="currentColor" viewBox="0 0 20 20">
+						<path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+					</svg>
+					<div>
+						<p class="font-medium text-green-900">%s</p>
+						<p class="text-sm text-green-700">Activity: %s • %.1f km • %d:%02d duration</p>
+					</div>
+				</div>
+				<span class="text-green-600 text-sm font-medium">%d/%d</span>
+			</div>`, result.FileName, result.ActivityName, result.Distance, result.Duration/3600, (result.Duration%3600)/60, result.Index, result.Total)
+		} else {
+			html += fmt.Sprintf(`
+			<div class="flex items-center justify-between bg-red-50 border border-red-200 rounded-lg p-4">
+				<div class="flex items-center">
+					<svg class="w-5 h-5 text-red-600 mr-3" fill="currentColor" viewBox="0 0 20 20">
+						<path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"></path>
+					</svg>
+					<div>
+						<p class="font-medium text-red-900">%s</p>
+						<p class="text-sm text-red-700">%s</p>
+					</div>
+				</div>
+				<span class="text-red-600 text-sm font-medium">%d/%d</span>
+			</div>`, result.FileName, result.Error, result.Index, result.Total)
+		}
+	}
+
+	html += `
+		</div>
+		<div class="mt-6 flex justify-between items-center">
+			<button onclick="location.reload()" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition duration-200">
+				Upload More Files
+			</button>
+			<a href="/activities" class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded transition duration-200">
+				View Activities
+			</a>
+		</div>
+	</div>`
+
+	w.Header().Set("Content-Type", "text/html")
+	w.Write([]byte(html))
+}
+
+// Helper type for bulk upload results
+type BulkUploadResult struct {
+	FileName     string
+	Index        int
+	Total        int
+	Status       string // "success" or "error"
+	Error        string
+	ActivityName string
+	Distance     float64 // in km
+	Duration     int     // in seconds
 }
