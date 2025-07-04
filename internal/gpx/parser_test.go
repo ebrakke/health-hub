@@ -42,7 +42,7 @@ func TestCalculateSmoothedElevation(t *testing.T) {
 				ElevationSmoothingWindow:   3,
 				ElevationMinGain:          3.0,
 			},
-			expected: 0.0, // No gains above 3.0m after smoothing small dataset
+			expected: 4.9, // Threshold-based algorithm captures sustained climb
 		},
 		{
 			name: "Large elevation gain that should be counted",
@@ -58,7 +58,7 @@ func TestCalculateSmoothedElevation(t *testing.T) {
 				ElevationSmoothingWindow:   3,
 				ElevationMinGain:          2.0,
 			},
-			expected: 9.17, // Moving average smoothed elevation gain (rounded)
+			expected: 10.5, // Threshold-based algorithm with sustained climb
 		},
 		{
 			name: "Empty points slice",
@@ -96,7 +96,7 @@ func TestCalculateSmoothedElevation(t *testing.T) {
 				ElevationSmoothingWindow:   3,
 				ElevationMinGain:          1.0,
 			},
-			expected: 3.0, // Moving average smoothed elevation gain
+			expected: 4.5, // Threshold-based algorithm with consistent climb
 		},
 	}
 
@@ -169,7 +169,7 @@ func TestCalculateSimpleElevation(t *testing.T) {
 	}
 }
 
-func TestCalculateMedian(t *testing.T) {
+func TestMedian(t *testing.T) {
 	tests := []struct {
 		name     string
 		values   []float64
@@ -209,9 +209,9 @@ func TestCalculateMedian(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := calculateMedian(tt.values)
+			result := median(tt.values)
 			if result != tt.expected {
-				t.Errorf("calculateMedian() = %v, expected %v", result, tt.expected)
+				t.Errorf("median() = %v, expected %v", result, tt.expected)
 			}
 		})
 	}
