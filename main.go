@@ -1,6 +1,7 @@
 package main
 
 import (
+	"embed"
 	"fmt"
 	"log"
 	"net/http"
@@ -12,6 +13,9 @@ import (
 	"health-hub/internal/handlers"
 	"health-hub/internal/storage"
 )
+
+//go:embed templates
+var templateFS embed.FS
 
 func main() {
 	cfg := config.Load()
@@ -33,8 +37,8 @@ func main() {
 		log.Println("Using file storage")
 	}
 
-	// Initialize handlers
-	h := handlers.NewHandlers(store)
+	// Initialize handlers with embedded templates
+	h := handlers.NewHandlers(store, templateFS)
 
 	// Setup routes
 	mux := http.NewServeMux()

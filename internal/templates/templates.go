@@ -1,6 +1,7 @@
 package templates
 
 import (
+	"embed"
 	"fmt"
 	"html/template"
 	"path/filepath"
@@ -9,11 +10,13 @@ import (
 
 type Templates struct {
 	templates map[string]*template.Template
+	fs        embed.FS
 }
 
-func NewTemplates() *Templates {
+func NewTemplates(fs embed.FS) *Templates {
 	return &Templates{
 		templates: make(map[string]*template.Template),
+		fs:        fs,
 	}
 }
 
@@ -28,18 +31,18 @@ func (t *Templates) LoadTemplates() error {
 	pages := []string{"home", "activities", "stats", "bulk-upload", "activity-detail", "gps-track"}
 
 	for _, page := range pages {
-		// Parse both base and page template together
+		// Parse both base and page template together from embedded filesystem
 		baseFile := "templates/layouts/base.html"
 		pageFile := filepath.Join("templates/pages", page+".html")
 		
-		tmpl, err := template.New(page).Funcs(funcMap).ParseFiles(baseFile, pageFile)
+		tmpl, err := template.New(page).Funcs(funcMap).ParseFS(t.fs, baseFile, pageFile)
 		if err != nil {
-			fmt.Printf("Error parsing templates for %s (base: %s, page: %s): %v\n", page, baseFile, pageFile, err)
+			fmt.Printf("Error parsing embedded templates for %s (base: %s, page: %s): %v\n", page, baseFile, pageFile, err)
 			return err
 		}
 		
 		t.templates[page] = tmpl
-		fmt.Printf("Successfully loaded template: %s\n", page)
+		fmt.Printf("Successfully loaded embedded template: %s\n", page)
 	}
 
 	return nil

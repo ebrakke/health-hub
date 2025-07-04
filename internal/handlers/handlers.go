@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"embed"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -20,13 +21,13 @@ type Handlers struct {
 	templates *templates.Templates
 }
 
-func NewHandlers(s storage.Storage) *Handlers {
-	tmpl := templates.NewTemplates()
+func NewHandlers(s storage.Storage, fs embed.FS) *Handlers {
+	tmpl := templates.NewTemplates(fs)
 	if err := tmpl.LoadTemplates(); err != nil {
-		fmt.Printf("ERROR: Failed to load templates: %v\n", err)
-		panic(fmt.Sprintf("Failed to load templates: %v", err))
+		fmt.Printf("ERROR: Failed to load embedded templates: %v\n", err)
+		panic(fmt.Sprintf("Failed to load embedded templates: %v", err))
 	}
-	fmt.Println("INFO: Templates loaded successfully")
+	fmt.Println("INFO: Embedded templates loaded successfully")
 	return &Handlers{
 		storage:   s,
 		templates: tmpl,
