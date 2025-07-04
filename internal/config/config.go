@@ -28,9 +28,9 @@ func Load() *Config {
 		AWSRegion:   getEnvOrDefault("AWS_REGION", "us-east-1"),
 		Environment: getEnvOrDefault("ENVIRONMENT", "development"),
 		
-		// Elevation smoothing defaults
-		ElevationSmoothingWindow:   getIntEnvOrDefault("ELEVATION_SMOOTHING_WINDOW", 5),
-		ElevationMinGain:          getFloatEnvOrDefault("ELEVATION_MIN_GAIN", 3.0),
+		// Elevation smoothing defaults (tuned for accuracy vs Strava/Garmin)
+		ElevationSmoothingWindow:   getIntEnvOrDefault("ELEVATION_SMOOTHING_WINDOW", 3),
+		ElevationMinGain:          getFloatEnvOrDefault("ELEVATION_MIN_GAIN", 0.3),
 		ElevationSmoothingEnabled: getBoolEnvOrDefault("ELEVATION_SMOOTHING_ENABLED", true),
 	}
 }

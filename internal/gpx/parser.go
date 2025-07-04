@@ -156,72 +156,52 @@ func haversineDistance(lat1, lon1, lat2, lon2 float64) float64 {
 	return earthRadius * c
 }
 
-// calculateSmoothedElevation calculates elevation gain using a smoothing algorithm
-// to filter out GPS noise and only count consistent elevation changes
+// calculateSmoothedElevation calculates elevation gain using a moving average smoothing algorithm
+// to filter out GPS noise, inspired by proven GPX smoothing techniques
 func calculateSmoothedElevation(points []models.GPXPoint, cfg *config.Config) float64 {
 	if !cfg.ElevationSmoothingEnabled || len(points) < 2 {
 		return calculateSimpleElevation(points)
 	}
 
-	totalElevation := 0.0
 	windowSize := cfg.ElevationSmoothingWindow
 	minGain := cfg.ElevationMinGain
 	
-	// Use a sliding window approach to smooth elevation data
+	// First, smooth the elevation data using moving average
+	smoothedElevations := make([]float64, len(points))
+	
 	for i := 0; i < len(points); i++ {
-		// Calculate the start and end indices for the current window
-		startIdx := i - windowSize/2
-		endIdx := i + windowSize/2
+		// Calculate symmetric window around point i
+		start := i - windowSize/2
+		end := i + windowSize/2
 		
-		// Clamp indices to array bounds
-		if startIdx < 0 {
-			startIdx = 0
+		// Clamp to array bounds
+		if start < 0 {
+			start = 0
 		}
-		if endIdx >= len(points) {
-			endIdx = len(points) - 1
-		}
-		
-		// Skip if we don't have enough points for a meaningful window
-		if endIdx-startIdx < 2 {
-			continue
+		if end >= len(points) {
+			end = len(points) - 1
 		}
 		
-		// Calculate smoothed elevation for this window
-		windowElevations := make([]float64, 0, endIdx-startIdx+1)
-		for j := startIdx; j <= endIdx; j++ {
-			windowElevations = append(windowElevations, points[j].Elevation)
+		// Calculate moving average for this window
+		sum := 0.0
+		count := 0
+		for j := start; j <= end; j++ {
+			sum += points[j].Elevation
+			count++
 		}
 		
-		// Use median of the window as the smoothed elevation
-		smoothedElevation := calculateMedian(windowElevations)
+		smoothedElevations[i] = sum / float64(count)
+	}
+	
+	// Now calculate elevation gain from smoothed data
+	totalElevation := 0.0
+	
+	for i := 1; i < len(smoothedElevations); i++ {
+		elevationDiff := smoothedElevations[i] - smoothedElevations[i-1]
 		
-		// If this is not the first point, check for consistent elevation gain
-		if i > 0 {
-			// Get the previous smoothed elevation
-			prevStartIdx := (i-1) - windowSize/2
-			prevEndIdx := (i-1) + windowSize/2
-			
-			if prevStartIdx < 0 {
-				prevStartIdx = 0
-			}
-			if prevEndIdx >= len(points) {
-				prevEndIdx = len(points) - 1
-			}
-			
-			if prevEndIdx-prevStartIdx >= 2 {
-				prevWindowElevations := make([]float64, 0, prevEndIdx-prevStartIdx+1)
-				for j := prevStartIdx; j <= prevEndIdx; j++ {
-					prevWindowElevations = append(prevWindowElevations, points[j].Elevation)
-				}
-				
-				prevSmoothedElevation := calculateMedian(prevWindowElevations)
-				
-				// Only count elevation gain if it's above the minimum threshold
-				elevationDiff := smoothedElevation - prevSmoothedElevation
-				if elevationDiff > minGain {
-					totalElevation += elevationDiff
-				}
-			}
+		// Only count elevation gains above minimum threshold
+		if elevationDiff > minGain {
+			totalElevation += elevationDiff
 		}
 	}
 	
