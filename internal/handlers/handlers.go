@@ -202,13 +202,16 @@ func (h *Handlers) UploadGPX(w http.ResponseWriter, r *http.Request) {
 	}
 	activity.GPXFile = filename
 
-	if err := h.storage.SaveGPXTrack(track); err != nil {
-		http.Error(w, "Error saving GPX track", http.StatusInternalServerError)
+	// Save activity first to get the generated ID
+	if err := h.storage.SaveActivity(activity); err != nil {
+		http.Error(w, "Error saving activity", http.StatusInternalServerError)
 		return
 	}
 
-	if err := h.storage.SaveActivity(activity); err != nil {
-		http.Error(w, "Error saving activity", http.StatusInternalServerError)
+	// Use the same ID for the GPX track so we can link them
+	track.ID = activity.ID
+	if err := h.storage.SaveGPXTrack(track); err != nil {
+		http.Error(w, "Error saving GPX track", http.StatusInternalServerError)
 		return
 	}
 
@@ -1232,18 +1235,20 @@ func (h *Handlers) BulkUploadGPX(w http.ResponseWriter, r *http.Request) {
 		}
 		activity.GPXFile = filename
 
-		// Save track and activity
-		if err := h.storage.SaveGPXTrack(track); err != nil {
+		// Save activity first to get the ID, then set track ID to match
+		if err := h.storage.SaveActivity(activity); err != nil {
 			result.Status = "error"
-			result.Error = "Failed to save GPS track"
+			result.Error = "Failed to save activity"
 			errorCount++
 			results = append(results, result)
 			continue
 		}
 
-		if err := h.storage.SaveActivity(activity); err != nil {
+		// Link track to activity by using the same ID
+		track.ID = activity.ID
+		if err := h.storage.SaveGPXTrack(track); err != nil {
 			result.Status = "error"
-			result.Error = "Failed to save activity"
+			result.Error = "Failed to save GPS track"
 			errorCount++
 			results = append(results, result)
 			continue
