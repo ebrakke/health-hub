@@ -168,9 +168,11 @@ Comprehensive unit tests cover:
 
 ### Performance & Accuracy
 - **Processing Speed**: ~279μs for 1000 GPS points
-- **Accuracy**: Within 5-10% of Strava/Garmin calculations
-- **Noise Reduction**: Eliminates 60-70% of GPS elevation noise
-- **Real-world Validation**: Tested against actual Strava activities
+- **Noise Reduction**: Uses median filtering and threshold-based climb detection
+- **Algorithm**: Strava-inspired approach with configurable parameters
+- **Limitation**: GPS elevation data is inherently inaccurate compared to topographic databases
+
+**Important Note**: GPS elevation measurements are significantly less accurate than GPS position data. For truly accurate elevation profiles, services like Strava replace GPS elevation entirely with topographic database lookups. The elevation values in this application should be considered approximate estimates only.
 
 ## Development Notes
 
