@@ -156,25 +156,34 @@ func haversineDistance(lat1, lon1, lat2, lon2 float64) float64 {
 	return earthRadius * c
 }
 
-// calculateSmoothedElevation calculates elevation gain using a moving average smoothing algorithm
-// to filter out GPS noise, inspired by proven GPX smoothing techniques
+// calculateSmoothedElevation calculates elevation gain using Strava-inspired threshold-based smoothing
+// This approach removes outliers and requires consistent climbing over a minimum distance/elevation
 func calculateSmoothedElevation(points []models.GPXPoint, cfg *config.Config) float64 {
-	if !cfg.ElevationSmoothingEnabled || len(points) < 2 {
+	if !cfg.ElevationSmoothingEnabled || len(points) < 3 {
 		return calculateSimpleElevation(points)
 	}
 
-	windowSize := cfg.ElevationSmoothingWindow
-	minGain := cfg.ElevationMinGain
+	// Step 1: Remove outliers using median filtering
+	smoothedPoints := removeElevationOutliers(points, cfg.ElevationSmoothingWindow)
 	
-	// First, smooth the elevation data using moving average
-	smoothedElevations := make([]float64, len(points))
+	// Step 2: Use threshold-based elevation gain calculation (Strava approach)
+	return calculateThresholdElevationGain(smoothedPoints, cfg.ElevationMinGain)
+}
+
+// removeElevationOutliers removes obvious GPS elevation outliers using median filtering
+func removeElevationOutliers(points []models.GPXPoint, windowSize int) []models.GPXPoint {
+	if windowSize < 1 {
+		windowSize = 3 // Minimum window size
+	}
+	
+	smoothed := make([]models.GPXPoint, len(points))
+	copy(smoothed, points)
 	
 	for i := 0; i < len(points); i++ {
-		// Calculate symmetric window around point i
+		// Get window around current point
 		start := i - windowSize/2
 		end := i + windowSize/2
 		
-		// Clamp to array bounds
 		if start < 0 {
 			start = 0
 		}
@@ -182,30 +191,89 @@ func calculateSmoothedElevation(points []models.GPXPoint, cfg *config.Config) fl
 			end = len(points) - 1
 		}
 		
-		// Calculate moving average for this window
-		sum := 0.0
-		count := 0
+		// Extract elevations in window
+		window := make([]float64, 0, end-start+1)
 		for j := start; j <= end; j++ {
-			sum += points[j].Elevation
-			count++
+			window = append(window, points[j].Elevation)
 		}
 		
-		smoothedElevations[i] = sum / float64(count)
+		// Use median instead of mean to handle outliers better
+		smoothed[i].Elevation = median(window)
 	}
 	
-	// Now calculate elevation gain from smoothed data
-	totalElevation := 0.0
+	return smoothed
+}
+
+// calculateThresholdElevationGain uses Strava's approach: require consistent climbing
+// over a minimum threshold before counting elevation gain
+func calculateThresholdElevationGain(points []models.GPXPoint, minGainThreshold float64) float64 {
+	if len(points) < 2 {
+		return 0.0
+	}
 	
-	for i := 1; i < len(smoothedElevations); i++ {
-		elevationDiff := smoothedElevations[i] - smoothedElevations[i-1]
+	totalElevation := 0.0
+	currentClimb := 0.0
+	isClimbing := false
+	
+	for i := 1; i < len(points); i++ {
+		elevDiff := points[i].Elevation - points[i-1].Elevation
 		
-		// Only count elevation gains above minimum threshold
-		if elevationDiff > minGain {
-			totalElevation += elevationDiff
+		if elevDiff > 0 {
+			// Going uphill
+			if !isClimbing {
+				// Starting a new climb
+				isClimbing = true
+				currentClimb = elevDiff
+			} else {
+				// Continuing climb
+				currentClimb += elevDiff
+			}
+		} else {
+			// Going downhill or flat
+			if isClimbing && currentClimb >= minGainThreshold {
+				// End of climb - count it if it meets threshold
+				totalElevation += currentClimb
+			}
+			isClimbing = false
+			currentClimb = 0.0
 		}
+	}
+	
+	// Handle final climb if activity ends while climbing
+	if isClimbing && currentClimb >= minGainThreshold {
+		totalElevation += currentClimb
 	}
 	
 	return totalElevation
+}
+
+// median calculates the median of a slice of float64 values
+func median(values []float64) float64 {
+	if len(values) == 0 {
+		return 0.0
+	}
+	if len(values) == 1 {
+		return values[0]
+	}
+	
+	// Simple sort for small arrays (more efficient than full sort)
+	sorted := make([]float64, len(values))
+	copy(sorted, values)
+	
+	// Bubble sort (fine for small windows)
+	for i := 0; i < len(sorted); i++ {
+		for j := 0; j < len(sorted)-1-i; j++ {
+			if sorted[j] > sorted[j+1] {
+				sorted[j], sorted[j+1] = sorted[j+1], sorted[j]
+			}
+		}
+	}
+	
+	mid := len(sorted) / 2
+	if len(sorted)%2 == 0 {
+		return (sorted[mid-1] + sorted[mid]) / 2.0
+	}
+	return sorted[mid]
 }
 
 // calculateSimpleElevation is the fallback method for simple elevation calculation

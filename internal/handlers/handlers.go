@@ -1995,3 +1995,75 @@ type BulkUploadResult struct {
 	Distance     float64 // in km
 	Duration     int     // in seconds
 }
+
+func (h *Handlers) RecalculateElevation(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Get all activities with GPX files
+	activities, err := h.storage.GetActivities()
+	if err != nil {
+		http.Error(w, "Error getting activities", http.StatusInternalServerError)
+		return
+	}
+
+	recalculated := 0
+	errors := 0
+
+	for _, activity := range activities {
+		if activity.GPXFile == "" {
+			continue // Skip activities without GPX files
+		}
+
+		// Read the raw GPX file from uploads directory
+		gpxPath := fmt.Sprintf("data/uploads/%s", activity.GPXFile)
+		gpxData, err := ioutil.ReadFile(gpxPath)
+		if err != nil {
+			fmt.Printf("Warning: Could not read GPX file %s: %v\n", gpxPath, err)
+			errors++
+			continue
+		}
+
+		// Reparse the GPX with current algorithm
+		track, newActivity, err := gpx.ParseGPX(string(gpxData))
+		if err != nil {
+			fmt.Printf("Warning: Could not parse GPX file %s: %v\n", gpxPath, err)
+			errors++
+			continue
+		}
+
+		// Update the activity with new elevation data but preserve original metadata
+		activity.TotalElevation = newActivity.TotalElevation
+		activity.Distance = newActivity.Distance
+		activity.Duration = newActivity.Duration
+		activity.AvgSpeed = newActivity.AvgSpeed
+		activity.MaxSpeed = newActivity.MaxSpeed
+
+		// Save updated activity
+		if err := h.storage.SaveActivity(activity); err != nil {
+			fmt.Printf("Warning: Could not save updated activity %s: %v\n", activity.ID, err)
+			errors++
+			continue
+		}
+
+		// Update the track data as well
+		track.ID = activity.ID
+		if err := h.storage.SaveGPXTrack(track); err != nil {
+			fmt.Printf("Warning: Could not save updated track %s: %v\n", activity.ID, err)
+			errors++
+			continue
+		}
+
+		recalculated++
+		fmt.Printf("INFO: Recalculated elevation for activity %s: %.2fm\n", activity.ID, activity.TotalElevation)
+	}
+
+	w.Header().Set("Content-Type", "text/html")
+	if errors == 0 {
+		w.Write([]byte(fmt.Sprintf(`<div class="p-3 bg-green-100 border border-green-400 text-green-700 rounded">✓ Recalculated elevation for %d activities</div>`, recalculated)))
+	} else {
+		w.Write([]byte(fmt.Sprintf(`<div class="p-3 bg-yellow-100 border border-yellow-400 text-yellow-700 rounded">⚠ Recalculated %d activities, %d errors</div>`, recalculated, errors)))
+	}
+}

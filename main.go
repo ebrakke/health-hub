@@ -57,6 +57,7 @@ func main() {
 	mux.HandleFunc("/api/upload/bulk-gpx", h.BulkUploadGPX)
 	mux.HandleFunc("/api/stats/activities", h.StatsActivities)
 	mux.HandleFunc("/api/stats/health", h.StatsHealth)
+	mux.HandleFunc("/api/recalculate", h.RecalculateElevation)
 
 	fmt.Printf("=== Health Hub Server ===\n")
 	fmt.Printf("Starting server on port %s\n", cfg.Port)
