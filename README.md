@@ -39,11 +39,45 @@ Take control of your health data with Health Hub - a comprehensive, privacy-focu
 
 ## 🚀 Quick Start
 
-### Prerequisites
-- Go 1.23.0 or later
-- Git
+### Option 1: Download Pre-built Binary (Recommended)
 
-### Installation & Setup
+1. **Download** the latest release for your platform from [GitHub Releases](https://github.com/ebrakke/health-hub/releases)
+
+   | Platform | Architecture | Download |
+   |----------|-------------|----------|
+   | Linux | x64 | `health-hub-linux-amd64.tar.gz` |
+   | Linux | ARM64 | `health-hub-linux-arm64.tar.gz` |
+   | macOS | Intel | `health-hub-darwin-amd64.tar.gz` |
+   | macOS | Apple Silicon | `health-hub-darwin-arm64.tar.gz` |
+   | Windows | x64 | `health-hub-windows-amd64.zip` |
+   | Windows | ARM64 | `health-hub-windows-arm64.zip` |
+
+2. **Extract** the downloaded archive:
+   ```bash
+   # Linux/macOS
+   tar -xzf health-hub-*.tar.gz
+   
+   # Windows
+   # Extract the ZIP file using Windows Explorer or your preferred tool
+   ```
+
+3. **Run** Health Hub:
+   ```bash
+   # Linux/macOS
+   ./health-hub
+   
+   # Windows
+   health-hub.exe
+   ```
+
+4. **Access your Health Hub**
+   - Open your browser to `http://localhost:8088`
+   - Upload your first GPX file or health data
+   - Start tracking your wellness journey!
+
+### Option 2: Build from Source
+
+**Prerequisites**: Go 1.23.0 or later, Git
 
 1. **Clone the repository**
    ```bash

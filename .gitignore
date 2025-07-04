@@ -17,6 +17,10 @@ go.work
 # Built binary
 health-hub
 
+# Build artifacts
+dist/
+releases/
+
 # Data directory - contains user uploads and runtime data
 data/
 

@@ -1,8 +1,44 @@
-.PHONY: build run dev clean install deps
+.PHONY: build run dev clean install deps build-all build-linux build-darwin build-windows release
 
 # Build the application
 build:
 	go build -o health-hub main.go
+
+# Build for all platforms
+build-all: build-linux build-darwin build-windows
+
+# Build for Linux (amd64 and arm64)
+build-linux:
+	@echo "Building for Linux..."
+	@mkdir -p dist
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o dist/health-hub-linux-amd64 main.go
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o dist/health-hub-linux-arm64 main.go
+
+# Build for macOS (amd64 and arm64)
+build-darwin:
+	@echo "Building for macOS..."
+	@mkdir -p dist
+	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o dist/health-hub-darwin-amd64 main.go
+	CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o dist/health-hub-darwin-arm64 main.go
+
+# Build for Windows (amd64 and arm64)
+build-windows:
+	@echo "Building for Windows..."
+	@mkdir -p dist
+	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o dist/health-hub-windows-amd64.exe main.go
+	CGO_ENABLED=0 GOOS=windows GOARCH=arm64 go build -ldflags="-s -w" -o dist/health-hub-windows-arm64.exe main.go
+
+# Create release archives
+release: build-all
+	@echo "Creating release archives..."
+	@mkdir -p releases
+	@cd dist && tar -czf ../releases/health-hub-linux-amd64.tar.gz health-hub-linux-amd64
+	@cd dist && tar -czf ../releases/health-hub-linux-arm64.tar.gz health-hub-linux-arm64
+	@cd dist && tar -czf ../releases/health-hub-darwin-amd64.tar.gz health-hub-darwin-amd64
+	@cd dist && tar -czf ../releases/health-hub-darwin-arm64.tar.gz health-hub-darwin-arm64
+	@cd dist && zip -q ../releases/health-hub-windows-amd64.zip health-hub-windows-amd64.exe
+	@cd dist && zip -q ../releases/health-hub-windows-arm64.zip health-hub-windows-arm64.exe
+	@echo "Release archives created in ./releases/"
 
 # Run the application
 run: build
@@ -21,6 +57,8 @@ deps:
 # Clean build artifacts
 clean:
 	rm -f health-hub
+	rm -rf dist/
+	rm -rf releases/
 	rm -rf data/
 
 # Install air for development

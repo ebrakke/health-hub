@@ -1,0 +1,85 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.23'
+        
+    - name: Get dependencies
+      run: go mod download
+      
+    - name: Run tests
+      run: go test ./...
+      
+    - name: Build for all platforms
+      run: make build-all
+      
+    - name: Create release archives
+      run: make release
+      
+    - name: Get tag name
+      id: tag
+      run: echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+      
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        name: Health Hub ${{ steps.tag.outputs.tag }}
+        body: |
+          ## Health Hub ${{ steps.tag.outputs.tag }}
+          
+          A self-hostable personal health and fitness data hub with GPX tracking and analytics.
+          
+          ### Features
+          - 📊 GPX file upload and analysis with elevation smoothing
+          - 📈 Interactive statistics dashboard with trend analysis
+          - 💾 Local JSON storage with optional S3 backup
+          - 🔄 Data recalculation with improved algorithms
+          - 🌐 Web interface with HTMX and Tailwind CSS
+          - 📱 Mobile-responsive design
+          
+          ### Installation
+          
+          1. **Download** the appropriate binary for your platform
+          2. **Extract** the archive
+          3. **Run** the binary: `./health-hub` (or `health-hub.exe` on Windows)
+          4. **Access** the web interface at `http://localhost:8088`
+          
+          ### Platform Support
+          - Linux (x64, ARM64)
+          - macOS (Intel, Apple Silicon)  
+          - Windows (x64, ARM64)
+          
+          ### Configuration
+          Set environment variables to customize:
+          - `PORT` - Server port (default: 8088)
+          - `DATA_PATH` - Data storage path (default: ./data)
+          - `USE_S3` - Enable S3 backup (default: false)
+          - `S3_BUCKET` - S3 bucket name
+          
+          ### Documentation
+          See [README.md](https://github.com/erikdao/health-hub) for complete installation and usage instructions.
+          
+          ---
+          
+          **Note**: GPS elevation data is inherently inaccurate. For precise elevation profiles, services like Strava use topographic databases. Elevation values should be considered approximate.
+        files: releases/*
+        tag_name: ${{ steps.tag.outputs.tag }}
+        draft: false
+        prerelease: false
